@@ -4,9 +4,15 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import math
 
+#poskusi določiti ref točko za bazen pinov -> ko točka (z r okolico) ni osvetljena (jo zakriva roka) se dogaja pobiranje. Ko je vidna spet se dogaja prenašanje.
+#ko se zakrivanje lukenj zgodi za več kot 2s je odlaganje? oz. pogled iz druge kamere ki vidi da lučka bazena ni zakrita gleda kdaj bo pin zakril lučko luknje pina
+
+# inverzen threshold za zaznavanje roke?
+
+# popravi da je bolj robustno novo stanje vstavljenega pina
 
 debug = 0
-
+prikazi_vmesne_korake=0
 
 def get_video_frame(video_path, frame_number):
     """(Previous implementation remains the same)"""
@@ -145,7 +151,7 @@ def create_offset_grid_from_lines(image, parallel_line_groups, side, show_result
     grid_points = np.array(grid_points)
     
     # Visualization
-    if show_result:
+    if show_result and prikazi_vmesne_korake==1:
         # Draw original lines
         for line in horizontal_lines:
             cv.line(vis_image, (line[0], line[1]), (line[2], line[3]), (0, 255, 0), 2)  # Green for horizontal
@@ -259,7 +265,7 @@ def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_res
                    cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
     
     # Display results if requested
-    if show_results:
+    if show_results and prikazi_vmesne_korake==1:
         cv.imshow("Original Image", image)
         cv.imshow("Thresholded (White Areas)", thresholded)
         cv.imshow("Edge Detection", edges)
@@ -369,10 +375,10 @@ def detect_parallel_lines_in_roi(image, roi, rho=1, theta=np.pi/180, threshold=5
             for line in group:
                 x1, y1, x2, y2 = line
                 cv.line(display_image, (x1, y1), (x2, y2), color, 2)
-        
-        cv.imshow("Detected Parallel Lines in ROI", display_image)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
+        if prikazi_vmesne_korake==1:
+            cv.imshow("Detected Parallel Lines in ROI", display_image)
+            cv.waitKey(0)
+            cv.destroyAllWindows()
     
     return parallel_line_groups
 
@@ -458,13 +464,13 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             'bounding_rect': cv.boundingRect(contour_absolute)
         }
 
-        if (aspect_ratio > 2 or 160 < area < 300):
+        if (aspect_ratio > 2 and 160 < area < 300):
             shapes['pin_in_bowl'].append(shape_info)
         elif cv.isContourConvex(approx) and 0.8 < circularity < 1.2 and area < 1000:
             shapes['small_circles'].append(shape_info)
         elif cv.isContourConvex(approx) and circularity > 0.8 and area >= 1000:
             shapes['big_circles'].append(shape_info)
-        elif (aspect_ratio > 1 or 120 < area < 161):
+        elif (aspect_ratio > 1 and 120 < area < 161):
             shapes['pins'].append(shape_info)
             pins_centers.append([abs_cx,abs_cy])
         elif (aspect_ratio > 1 and 300 < area):
@@ -617,7 +623,7 @@ def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=
         result = 'sredina'
     
     # Visualization
-    if show_result:
+    if show_result and prikazi_vmesne_korake==1:
         vis = image.copy()
         
         # Draw threshold lines
@@ -641,14 +647,25 @@ def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=
     return result
 
 if __name__ == "__main__":
-    # Load image
-    for i in range(1):
-        slika = get_video_frame("64210323_video_5", i+200)
+
+
+    radij_tocnosti=20
+
+    setup=0
+
+    for frame in range(150):
+        slika = get_video_frame("64210323_video_5", frame+1)
         if slika is None:
             print("Failed to load image")
         else:
-            # Convert to BGR for processing
+
+                        # Convert to BGR for processing
             image_bgr = cv.cvtColor(slika, cv.COLOR_RGB2BGR)
+
+            if setup==0 or setup==2:
+                centers, threshold_img, edge_img = detect_bright_objects(slika)
+                if len(centers)>=9:
+                    setup=1
             
             # Define search region (x, y, width, height)
             roi = (150, 50, 200, 400)
@@ -667,12 +684,18 @@ if __name__ == "__main__":
                                                   canny_low=canny_low,
                                                   canny_high=canny_high)
             
-            stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
-            print("Luknje za pine so "+stran_lukenj)
-                
-            # Visualize
-            result = visualize_detection(image_bgr, shapes, roi)
-            
+            if setup==1 or setup==0:
+                stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
+                print("Luknje za pine so "+stran_lukenj)
+                if setup==1:
+                    setup=3
+                else:
+                    setup=2
+
+            if prikazi_vmesne_korake==1:
+                # Visualize
+                result = visualize_detection(image_bgr, shapes, roi)
+            """
             # Detect parallel lines in ROI
             parallel_line_groups = detect_parallel_lines_in_roi(
             image_bgr, 
@@ -680,7 +703,6 @@ if __name__ == "__main__":
             angle_threshold=np.pi/18,  # 10 degrees
             show_result=True
             )
-
             if parallel_line_groups and len(parallel_line_groups) >= 2:
                 # Create offset grid
                 vis_img, grid_points, first_point, h_off, v_off = create_offset_grid_from_lines(
@@ -696,18 +718,46 @@ if __name__ == "__main__":
                     print("Vertical offset from horizontal line:", v_off)
                     print("\nFull 3x3 grid:")
                     print(grid_points)
+            """
 
-            centers, threshold_img, edge_img = detect_bright_objects(slika)
+            if debug==1:
+                print(f"Found {len(centers)} bright objects at positions:")
+                for i, center in enumerate(centers):
+                    print(f"Object {i+1}: {center}")
 
-            print(f"Found {len(centers)} bright objects at positions:")
-            for i, center in enumerate(centers):
-                print(f"Object {i+1}: {center}")
+                print("PINS:")
+                print(pin_centers)
 
-            print("PINS:")
-            print(pin_centers[:])
-
-            # Display edges and results
-            cv.imshow("Detected Edges in ROI", edges)
-            cv.imshow(f"Shape Detection in ROI (Area: {min_area}-{max_area})", result)
-            cv.waitKey(0)
-            cv.destroyAllWindows()
+            if prikazi_vmesne_korake==1:
+                # Display edges and results
+                cv.imshow("Detected Edges in ROI", edges)
+                cv.imshow(f"Shape Detection in ROI (Area: {min_area}-{max_area})", result)
+                cv.waitKey(0)
+                cv.destroyAllWindows()
+            
+            prikazi_vmesne_korake=0
+            inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+            frame_cnt=0
+            old_inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+            for pins in range(len(pin_centers)):
+                for luknje in range(len(centers)):
+                    for coordinate in range(2):
+                        if pin_centers[pins][coordinate]>(centers[luknje][coordinate]-radij_tocnosti/2) and pin_centers[pins][coordinate]<(centers[luknje][coordinate]+radij_tocnosti/2):
+                            frame_cnt=frame_cnt+1
+                            if frame_cnt==2:
+                                inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
+                                if (inserted_pins!=old_inserted_pins):
+                                    print(pins,luknje)
+                                    print("pin centers:")
+                                    print(pin_centers[pins])
+                                    print("")
+                                    print("centri lukenj:")
+                                    print(centers[luknje][:])
+                                    prikazi_vmesne_korake=1
+                                    old_inserted_pins=inserted_pins
+                        else:
+                            frame_cnt=0
+            if prikazi_vmesne_korake==1:
+                print("Frame:" + str(frame))
+                print(inserted_pins)
+                print("#########################")
