@@ -9,14 +9,17 @@ import math
 
 # inverzen threshold za zaznavanje roke?
 
-# popravi da je bolj robustno novo stanje vstavljenega pina
+# upoštevaj pripombe z e.fe:
+# 1. pobiranje dela, zdej še pospravljanje
+# 2. syncanje dveh videje (torej obeh kamer)
+# 3. razvoj logike na podlagi pokrivanja bazena pinov in trenutka odlaganja/zaznavanja pina
 
 debug = 0
 prikazi_vmesne_korake=0
 
 def get_video_frame(video_path, frame_number):
     """(Previous implementation remains the same)"""
-    video_dir = 'C:\\Users\\david\\Desktop\\fax\\RV\\izziv_30.04.2025\\videji\\'
+    video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
     video_path = video_dir + video_path + ".mp4"
     cap = cv.VideoCapture(video_path)
     
@@ -251,7 +254,7 @@ def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_res
             
         # Get bounding circle
         (x, y), radius = cv.minEnclosingCircle(contour)
-        center = (int(x), int(y))
+        center = [int(x), int(y)]
         center_points.append(center)
         
         # Draw on visualization
@@ -402,7 +405,8 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     edges = cv.Canny(blurred, canny_low, canny_high)
     
     # Use RETR_LIST to get all contours, not just external ones
-    contours, _ = cv.findContours(edges, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv.findContours(edges, cv.RETR_LIST, cv.CHAIN_APPROX_TC89_L1)
+    #ZADNJI PARAMETER:CHAIN_APPROX_NONE, CHAIN_APPROX_SIMPLE ,CHAIN_APPROX_TC89_L1 CHAIN_APPROX_TC89_KCOS 
     
     shapes = {
         'small_circles': [],
@@ -470,8 +474,9 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             shapes['small_circles'].append(shape_info)
         elif cv.isContourConvex(approx) and circularity > 0.8 and area >= 1000:
             shapes['big_circles'].append(shape_info)
-        elif (aspect_ratio > 1 and 120 < area < 161):
+        elif (aspect_ratio > 1 and aspect_ratio<1.65 and 120 < area < 161):
             shapes['pins'].append(shape_info)
+            #print("pin: "+str(aspect_ratio)+"|"+str(circularity))
             pins_centers.append([abs_cx,abs_cy])
         elif (aspect_ratio > 1 and 300 < area):
             shapes['trapezoids'].append(shape_info)
@@ -653,6 +658,13 @@ if __name__ == "__main__":
 
     setup=0
 
+    x=0
+    y=1
+
+    inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+    frame_cnt=0
+    old_inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+
     for frame in range(150):
         slika = get_video_frame("64210323_video_5", frame+1)
         if slika is None:
@@ -735,29 +747,43 @@ if __name__ == "__main__":
                 cv.waitKey(0)
                 cv.destroyAllWindows()
             
+            #currently_found_pins=[[0,0,0],[0,0,0],[0,0,0]]
             prikazi_vmesne_korake=0
-            inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
-            frame_cnt=0
-            old_inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
-            for pins in range(len(pin_centers)):
-                for luknje in range(len(centers)):
-                    for coordinate in range(2):
-                        if pin_centers[pins][coordinate]>(centers[luknje][coordinate]-radij_tocnosti/2) and pin_centers[pins][coordinate]<(centers[luknje][coordinate]+radij_tocnosti/2):
-                            frame_cnt=frame_cnt+1
-                            if frame_cnt==2:
-                                inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
-                                if (inserted_pins!=old_inserted_pins):
-                                    print(pins,luknje)
-                                    print("pin centers:")
-                                    print(pin_centers[pins])
-                                    print("")
-                                    print("centri lukenj:")
-                                    print(centers[luknje][:])
-                                    prikazi_vmesne_korake=1
-                                    old_inserted_pins=inserted_pins
-                        else:
-                            frame_cnt=0
-            if prikazi_vmesne_korake==1:
-                print("Frame:" + str(frame))
-                print(inserted_pins)
-                print("#########################")
+            #if frame==133:
+            #    prikazi_vmesne_korake=1
+            if setup==3:
+                for pins in range(len(pin_centers)):
+                    for luknje in range(len(centers)):
+                        pin_index=pins
+                        if pin_centers[pin_index][x]>(centers[luknje][x]-radij_tocnosti/2) and pin_centers[pin_index][x]<(centers[luknje][x]+radij_tocnosti/2) and pin_centers[pin_index][y]>(centers[luknje][y]-radij_tocnosti/2) and pin_centers[pin_index][y]<(centers[luknje][y]+radij_tocnosti/2) and inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
+                            #frame_cnt=frame_cnt+1
+                            #if frame_cnt==2:
+                            #inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
+                            inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
+
+                sprememba=0
+                for i in range(9):
+                    if inserted_pins[math.floor(i/3)][math.floor(i%3)]>old_inserted_pins[math.floor(i/3)][math.floor(i%3)]:
+                        sprememba=1
+
+                if sprememba==1:
+                #if (inserted_pins!=old_inserted_pins):
+                    print(pins,luknje)
+                    print("pin centers:")
+                    print(pin_centers[pins])
+                    print("")
+                    print("centri lukenj:")
+                    print(centers[luknje][:])
+                    prikazi_vmesne_korake=1
+                    old_inserted_pins=np.logical_or(old_inserted_pins,inserted_pins)
+                else:
+                    frame_cnt=0
+                if prikazi_vmesne_korake==1:
+                    print("Frame:" + str(frame))
+                    print(inserted_pins)
+
+                    print("pin centers:")
+                    print(pin_centers)
+                    print(centers)
+                    #print(currently_found_pins)
+                    print("#########################")
