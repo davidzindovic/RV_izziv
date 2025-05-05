@@ -19,7 +19,13 @@ prikazi_vmesne_korake=0
 
 def get_video_frame(video_path, frame_number):
     """(Previous implementation remains the same)"""
-    video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
+    
+    #PC doma:
+    #video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
+    
+    #Laptop šola:
+    video_dir = 'C:\\Users\\Vegova\\Documents\\zindo\\'
+    
     video_path = video_dir + video_path + ".mp4"
     cap = cv.VideoCapture(video_path)
     
@@ -470,10 +476,10 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
 
         if (aspect_ratio > 2 and 160 < area < 300):
             shapes['pin_in_bowl'].append(shape_info)
-        elif cv.isContourConvex(approx) and 0.8 < circularity < 1.2 and area < 1000:
-            shapes['small_circles'].append(shape_info)
-        elif cv.isContourConvex(approx) and circularity > 0.8 and area >= 1000:
-            shapes['big_circles'].append(shape_info)
+        #elif cv.isContourConvex(approx) and 0.8 < circularity < 1.2 and area < 1000:
+        #    shapes['small_circles'].append(shape_info)
+        #elif cv.isContourConvex(approx) and circularity > 0.8 and area >= 1000:
+        #    shapes['big_circles'].append(shape_info)
         elif (aspect_ratio > 1 and aspect_ratio<1.65 and 120 < area < 161):
             shapes['pins'].append(shape_info)
             #print("pin: "+str(aspect_ratio)+"|"+str(circularity))
@@ -662,14 +668,18 @@ if __name__ == "__main__":
     y=1
 
     inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+    inserted_pins_tmp=[[0,0,0],[0,0,0],[0,0,0]]
     frame_cnt=0
     old_inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
 
-    for frame in range(150):
+    pin_count=0
+    action="vstavljanje"
+
+    for frame in range(400):
         slika = get_video_frame("64210323_video_5", frame+1)
         if slika is None:
             print("Failed to load image")
-        else:
+        elif action!="konec":
 
                         # Convert to BGR for processing
             image_bgr = cv.cvtColor(slika, cv.COLOR_RGB2BGR)
@@ -752,14 +762,33 @@ if __name__ == "__main__":
             #if frame==133:
             #    prikazi_vmesne_korake=1
             if setup==3:
+                if action=="odvzemanje" and len(pin_centers)>0:
+                    inserted_pins_tmp=inserted_pins
+                    inserted_pins=[[0,0,0],[0,0,0],[0,0,0]]
+                    prikazi_vmesne_korake=1
                 for pins in range(len(pin_centers)):
+                    tracking_cnt=0
                     for luknje in range(len(centers)):
                         pin_index=pins
-                        if pin_centers[pin_index][x]>(centers[luknje][x]-radij_tocnosti/2) and pin_centers[pin_index][x]<(centers[luknje][x]+radij_tocnosti/2) and pin_centers[pin_index][y]>(centers[luknje][y]-radij_tocnosti/2) and pin_centers[pin_index][y]<(centers[luknje][y]+radij_tocnosti/2) and inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
+                        if pin_centers[pin_index][x]>(centers[luknje][x]-radij_tocnosti/2) and pin_centers[pin_index][x]<(centers[luknje][x]+radij_tocnosti/2) and pin_centers[pin_index][y]>(centers[luknje][y]-radij_tocnosti/2) and pin_centers[pin_index][y]<(centers[luknje][y]+radij_tocnosti/2) :
                             #frame_cnt=frame_cnt+1
                             #if frame_cnt==2:
                             #inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
-                            inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
+                            if inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
+                                inserted_pins[math.floor(luknje/3)][math.floor(luknje%3)]=1
+                            #if action=="odvzemanje":
+                            #    print(inserted_pins)
+                            #    print("")
+                
+                if action=="odvzemanje":
+                    print("!!!!!!!!!!!!")
+                    print(inserted_pins)
+                    print(inserted_pins_tmp)
+                    print(pin_centers)
+                    print("!!!!!!!!!!!!")            
+                
+                if len(pin_centers)==0:
+                    action=="konec"
 
                 sprememba=0
                 for i in range(9):
@@ -775,9 +804,13 @@ if __name__ == "__main__":
                     print("centri lukenj:")
                     print(centers[luknje][:])
                     prikazi_vmesne_korake=1
-                    old_inserted_pins=np.logical_or(old_inserted_pins,inserted_pins)
-                else:
-                    frame_cnt=0
+                    
+                    if action=="odvzemanje":
+                        old_inserted_pins=np.logical_and(old_inserted_pins,inserted_pins)
+                    elif action=="vstavljanje":
+                        old_inserted_pins=np.logical_or(old_inserted_pins,inserted_pins)
+                #else:
+                #    frame_cnt=0
                 if prikazi_vmesne_korake==1:
                     print("Frame:" + str(frame))
                     print(inserted_pins)
@@ -787,3 +820,23 @@ if __name__ == "__main__":
                     print(centers)
                     #print(currently_found_pins)
                     print("#########################")
+                
+                if action=="vstavljanje":
+                    pin_count=0
+                elif action=="odvzemanje":
+                    pin_count=9
+             
+                for p in range(9):
+                    if inserted_pins[math.floor(p/3)][math.floor(p%3)]==1 and action=="vstavljanje":
+                        pin_count=pin_count+1
+                    elif inserted_pins[math.floor(p/3)][math.floor(p%3)]==0 and action=="odvzemanje":
+                        pin_count=pin_count-1
+                    
+                if pin_count==9 and action=="vstavljanje":
+                    print("Vse pini so bili vstavljeni, frame: "+str(frame))
+                    action="odvzemanje"
+                elif pin_count==0 and action=="odvzemanje":
+                    print("Vsi pini so bili pobrani, frame: "+str(frame))
+                    action="konec"
+                elif action=="konec":
+                    print("konec, frame: "+str(frame))
