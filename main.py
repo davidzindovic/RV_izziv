@@ -7,6 +7,7 @@ import math
 #conf file naj vsebuje:
 #ime_videja1,ime_videja2
 #zacetna_tocka_x,zacetna_tocka_y,sirina,visina <--roi točke
+#direktorij_z_videji
 
 # pin in bowl argumente popravi - ish
 
@@ -16,10 +17,14 @@ import math
 #->-> sem prej prenašal pin in je zdej nov pin zaznan v 3x3 gridu? -> odlaganje pina
 #->->-> sem prej odložil pin in še vedno vidim pine v bowlu? -> prazna roka
 
+#dodej logiko na koncu da če so vsi pini pobrani da prazna roka pomeni zadnji action -> od ___ do zadnji frame mozen
+
 debug = 0
-debug_prikaz=0      # za prikaz framea z zamudo 1
-debug_outlines=0    # sam za prikaz obrob in shapeov ko najde nekaj
-debug_pins=0        # za podatke o najdenih pinih
+debug_prikaz=0          # za prikaz framea z zamudo 1
+debug_outlines=0        # sam za prikaz obrob in shapeov ko najde nekaj
+debug_pins=0            # za podatke o najdenih pinih
+debug_sprotno_stanje=0  # za izpis/izris sprotnega stanja pinov
+debug_video=0           # za izpis podatkov o videju (npr. ko ne more dobiti slike)
 
 # seznam možnih stanj (informativno, neuporabljeno)
 stanja=["pobiranje","prenos","odlaganje","prazna roka"]
@@ -30,8 +35,8 @@ last_action="prazna roka"
 # trenutni .json file:
 zgodovina=[]
 
-# spremeljivka za shranjevanje zaključni frame zadnje "akcije",
-# saj se start/stop frame ponastavita po koncu akcije
+# spremeljivka za shranjevanje zaključnega frame-a zadnje "akcije",
+# saj se start/stop frame (številki) ponastavita po koncu akcije
 last_action_frame=0
 
 prikazi_vmesne_korake=0 # spremeljivka za omogočanje prikaza vmesnih korakov/stanj
@@ -55,13 +60,15 @@ def get_video_frame(video_path, frame_number):
     cap = cv.VideoCapture(video_path)
     
     if not cap.isOpened():
-        print(f"Error: Could not open video file {video_path}")
+        if debug_video==1:
+            print(f"Error: Could not open video file {video_path}")
         return None
     
     total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
     
     if frame_number < 0 or frame_number >= total_frames:
-        print(f"Error: Frame {frame_number} is out of range (0-{total_frames-1})")
+        if debug_video==1:
+            print(f"Error: Frame {frame_number} is out of range (0-{total_frames-1})")
         cap.release()
         return None
     
@@ -72,7 +79,8 @@ def get_video_frame(video_path, frame_number):
     if ret:
         return cv.cvtColor(frame, cv.COLOR_BGR2RGB)
     else:
-        print(f"Error: Could not read frame {frame_number}")
+        if debug_video==1:
+            print(f"Error: Could not read frame {frame_number}")
         return None
 
 # funkcija za zaznavanje osvetljenih lukenj za pine (krogci):
@@ -498,20 +506,28 @@ if __name__ == "__main__":
     # spremenljivka za potek zanke:
     video="play"
 
+    bowl_cnt=0
+
+    action_assigned=False
+    action_start_frame=0
+    action_end_frame=0
+
 # zanka za sprehod čez vse slike videja:
     #for frame in range(550):
-    while video!="stop"
+    while video!="stop":
     
         #shranimo sliki iz obeh kamer izbranega poskusa:
         slika = get_video_frame("64210323_video_5", frame+1)
         slika_2 = get_video_frame("64210323_video_1", frame+1)
         
-        if slika is None
-            print("Failed to load image, 1. video, frame: "+str(frame))
+        if slika is None:
+            if debug_video==1:
+                print("Failed to load image, 1. video, frame: "+str(frame))
             video="stop"
             action="konec" # preprečimo obdelavo slike
-        if slika2 is None
-            print("Failed to load image, 2. video, frame: "+str(frame))
+        if slika_2 is None:
+            if debug_video==1:
+                print("Failed to load image, 2. video, frame: "+str(frame))
             video="stop"
             action="konec" # preprečimo obdelavo slike
             
@@ -723,20 +739,39 @@ if __name__ == "__main__":
                     if sprememba==1 and action=="vstavljanje":
                     #if (inserted_pins!=old_inserted_pins):
                         #if debug_vstavljanje==1:
-                        print("-----------------")
-                        print("Frame:" + str(frame))
-                        print("faza: vstavljanje")
-                        for c in range(3):
-                            print(inserted_pins_zgoraj[c])
-                        print("~~~~~~~~~~~~~~~")
-                        for c in range(3):
-                            print(inserted_pins_spodaj[c])
-                        print("-----------------")
+
+                        if debug_sprotno_stanje==1:
+                            print("-----------------")
+                            print("Frame:" + str(frame))
+                            print("faza: vstavljanje")
+                            for c in range(3):
+                                print(inserted_pins_zgoraj[c])
+                            print("~~~~~~~~~~~~~~~")
+                            for c in range(3):
+                                print(inserted_pins_spodaj[c])
+                            print("-----------------")
                         
-                        last_action="odlaganje"
-                        zgodovina.append(["prenos",last_action_frame,frame-1])
-                        zgodovina.append([last_action,frame,frame+1])
-                        last_action_frame=frame+1
+                        if action_assigned==False:
+                            last_action="odlaganje"
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame-1
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append(["prenos",action_start_frame,action_end_frame])#,"a",last_action_frame,start_frame_pokrivanja_bowla
+
+                            last_action_frame=action_end_frame
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append([last_action,action_start_frame,action_end_frame])#,"a",last_action_frame,start_frame_pokrivanja_bowla
+
+                            last_action_frame=action_end_frame
+                            action_assigned=True
 
                         if debug_prikaz==1:
                             prikazi_vmesne_korake=1
@@ -784,21 +819,39 @@ if __name__ == "__main__":
                     if sprememba==1 and action=="odvzemanje":
                         if debug_prikaz==1:
                             prikazi_vmesne_korake=1
-                        print("-----------------")
-                        print("frame: "+str(frame))
-                        print("faza: odvzemanje")
-                        #print("stanje: "+str(pin_count)+"|"+str(odvzemanje_tracker_max))
-                        for c in range(3):
-                            print(inserted_pins_zgoraj[c])
-                        print("~~~~~~~~~~~~~~~")
-                        for cd in range(3):
-                            print(inserted_pins_spodaj[cd])
-                        print("-----------------")
+                        if debug_sprotno_stanje==1:
+                            print("-----------------")
+                            print("frame: "+str(frame))
+                            print("faza: odvzemanje")
+                            #print("stanje: "+str(pin_count)+"|"+str(odvzemanje_tracker_max))
+                            for c in range(3):
+                                print(inserted_pins_zgoraj[c])
+                            print("~~~~~~~~~~~~~~~")
+                            for cd in range(3):
+                                print(inserted_pins_spodaj[cd])
+                            print("-----------------")
 
-                        last_action="pobiranje"
-                        zgodovina.append(["prazna roka",last_action_frame,frame-1])
-                        zgodovina.append([last_action,frame,frame+1])
-                        last_action_frame=frame+1
+                        if action_assigned==False:
+                            last_action="pobiranje"
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame-1
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append(["prazna roka",action_start_frame,action_end_frame])#,"b",last_action_frame,start_frame_pokrivanja_bowla
+
+                            last_action_frame=action_end_frame
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append([last_action,action_start_frame,action_end_frame])#,"b",last_action_frame,start_frame_pokrivanja_bowla
+
+                            last_action_frame=action_end_frame
+                            action_assigned=True
 
                         if debug_outlines==1:
                             cv.imshow("Detected Edges in ROI - cam1", edges)
@@ -812,25 +865,57 @@ if __name__ == "__main__":
                     sprememba=0
 
                     # Logika za pokrivanje bowla z roko:
-                    if len(posodica_pod_roko)==0 and start_frame_pokrivanja_bowla==0:
+                    if len(posodica_pod_roko)==0 and start_frame_pokrivanja_bowla==0 and ((last_action=="odlaganje" and action=="vstavljanje")or(last_action=="pobiranje" and action=="odvzemanje")):
+                        #bowl_cnt=bowl_cnt+1
+                        #if bowl_cnt>2:
                         start_frame_pokrivanja_bowla=frame
+                        #    bowl_cnt=0
+
                         #print("POKRIVA")
                         #stop_frame_pokrivanja_bowla=start_frame_pokrivanja_bowla
                     if len(posodica_pod_roko)!=0 and start_frame_pokrivanja_bowla!=0:
-                        stop_frame_pokrivanja_bowla=frame-1
+                        stop_frame_pokrivanja_bowla=frame#-1
                         if (stop_frame_pokrivanja_bowla-start_frame_pokrivanja_bowla)>2:
                             if debug==1:
                                 print("roka pokriva bowl! start frame: "+str(start_frame_pokrivanja_bowla)+", stop frame: "+str(stop_frame_pokrivanja_bowla))
-                            if action=="vstavljanje":
-                                zgodovina.append(["prazna roka",last_action_frame+1,start_frame_pokrivanja_bowla+1]) #+1?
+                            if action=="vstavljanje" and action_assigned==False:
+
+                                action_start_frame=last_action_frame+1
+                                action_end_frame=start_frame_pokrivanja_bowla#-1
+                                if action_end_frame<action_start_frame:
+                                    action_end_frame=action_start_frame
+
+                                zgodovina.append(["prazna roka",action_start_frame,action_end_frame])#,"c",last_action_frame,start_frame_pokrivanja_bowla
+
+                                last_action_frame=action_end_frame
                                 last_action="pobiranje"
-                            elif action=="odvzemanje":
-                                zgodovina.append(["prenos",last_action_frame+1,start_frame_pokrivanja_bowla+1])
+                                
+                            elif action=="odvzemanje" and action_assigned==False:
+
+                                action_start_frame=last_action_frame+1
+                                action_end_frame=start_frame_pokrivanja_bowla#-1
+                                if action_end_frame<action_start_frame:
+                                    action_end_frame=action_start_frame
+
+                                zgodovina.append(["prenos",action_start_frame,action_end_frame])#,"c",last_action_frame,start_frame_pokrivanja_bowla
+                                
+                                last_action_frame=action_end_frame
                                 last_action="odlaganje"
-                            zgodovina.append([last_action,start_frame_pokrivanja_bowla,stop_frame_pokrivanja_bowla])
-                            last_action_frame=stop_frame_pokrivanja_bowla
-                            stop_frame_pokrivanja_bowla=0
-                            start_frame_pokrivanja_bowla=0
+                                
+                            
+                            if action_assigned==False:
+
+                                action_start_frame=last_action_frame+1
+                                action_end_frame=stop_frame_pokrivanja_bowla
+                                if action_end_frame<action_start_frame:
+                                    action_end_frame=action_start_frame
+
+                                zgodovina.append([last_action,action_start_frame,action_end_frame])#,"c",last_action_frame,start_frame_pokrivanja_bowla
+ 
+                                last_action_frame=action_end_frame
+                                stop_frame_pokrivanja_bowla=0
+                                start_frame_pokrivanja_bowla=0
+                                action_assigned=True
                         else:
                             stop_frame_pokrivanja_bowla=0
                             start_frame_pokrivanja_bowla=0
@@ -838,14 +923,18 @@ if __name__ == "__main__":
                     
                     
                     if pin_count==9 and action=="vstavljanje":
-                        print("Vse pini so bili vstavljeni, frame: "+str(frame))
+                        if debug_sprotno_stanje==1:
+                            print("Vse pini so bili vstavljeni, frame: "+str(frame))
                         action="odvzemanje"
                     elif pin_count==0 and action=="odvzemanje" and len(pin_centers_spodaj)==0:
-                        print("Vsi pini so bili pobrani, frame: "+str(frame))
+                        if debug_sprotno_stanje==1:
+                            print("Vsi pini so bili pobrani, frame: "+str(frame))
                         action="konec"
                     elif action=="konec":
-                        print("konec, frame: "+str(frame))
-                        
+                        if debug_sprotno_stanje==1:
+                            print("konec, frame: "+str(frame))
+
         frame=frame+1
+        action_assigned=False
         
     print(zgodovina)
