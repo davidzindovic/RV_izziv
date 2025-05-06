@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import math
 
-
-# upoštevaj pripombe z e.fe:
-# 3. razvoj logike na podlagi pokrivanja bazena pinov in trenutka odlaganja/zaznavanja pina
+#conf file naj vsebuje:
+#ime_videja1,ime_videja2
+#zacetna_tocka_x,zacetna_tocka_y,sirina,visina <--roi točke
 
 # pin in bowl argumente popravi - ish
 
@@ -17,19 +17,28 @@ import math
 #->->-> sem prej odložil pin in še vedno vidim pine v bowlu? -> prazna roka
 
 debug = 0
-debug_vstavljanje=0
-debug_odvzemanje=0
-debug_prikaz=0   # za prikaz framea z zamudo 1
-debug_outlines=0 # sam za prikaz obrob in shapeov ko najde nekaj
-debug_pins=0     # za podatke o najdenih pinih
+debug_prikaz=0      # za prikaz framea z zamudo 1
+debug_outlines=0    # sam za prikaz obrob in shapeov ko najde nekaj
+debug_pins=0        # za podatke o najdenih pinih
 
+# seznam možnih stanj (informativno, neuporabljeno)
 stanja=["pobiranje","prenos","odlaganje","prazna roka"]
+
+# spremenljivka, ki beleži zadnjo izvedeno "akcijo" za logiko
 last_action="prazna roka"
+
+# trenutni .json file:
 zgodovina=[]
+
+# spremeljivka za shranjevanje zaključni frame zadnje "akcije",
+# saj se start/stop frame ponastavita po koncu akcije
 last_action_frame=0
 
-prikazi_vmesne_korake=0
+prikazi_vmesne_korake=0 # spremeljivka za omogočanje prikaza vmesnih korakov/stanj
+                        # slike. Sprememljivko spreminja program
 
+
+# funkcija za pridobitev slike iz videja na podlagi številke frame-a:
 def get_video_frame(video_path, frame_number):
     """(Previous implementation remains the same)"""
     
@@ -38,6 +47,9 @@ def get_video_frame(video_path, frame_number):
     
     #Laptop šola:
     #video_dir = 'C:\\Users\\Vegova\\Documents\\zindo\\'
+    
+    #Laptop osebni:
+    #
     
     video_path = video_dir + video_path + ".mp4"
     cap = cv.VideoCapture(video_path)
@@ -63,159 +75,7 @@ def get_video_frame(video_path, frame_number):
         print(f"Error: Could not read frame {frame_number}")
         return None
 
-def create_offset_grid_from_lines(image, parallel_line_groups, side, show_result=True):
-    """
-    Creates a 3x3 grid of points with proper perpendicular offsets from two sets of lines.
-    
-    Args:
-        image: Input image
-        parallel_line_groups: List of at least two parallel line groups
-        side: na kateri strani (polovica ekrana - zgoraj spodaj) so luknje 3x3
-        show_result: Whether to visualize the result
-        
-    Returns:
-        tuple: (visualization_image, grid_points, first_point_coords, horizontal_offset, vertical_offset)
-               where grid_points is a 3x3 array of (x,y) coordinates
-    """
-    if len(parallel_line_groups) < 2:
-        print("Need at least two groups of parallel lines (horizontal and vertical)")
-        return image, None, None, None, None
-    
-    if side=="spodaj":
-        horizontal_offset=32
-        vertical_offset=30
-        point_spacing_x=38
-        point_spacing_y=40
-    elif side=="zgoraj":
-        horizontal_offset=45
-        vertical_offset=23
-        point_spacing_x=35
-        point_spacing_y=25        
-
-    # Make a copy of the image for visualization
-    vis_image = image.copy()
-
-    # Get horizontal and vertical line groups (modify indices if needed)
-
-    horizontal_lines = parallel_line_groups[1]  # First group for horizontal lines
-    vertical_lines = parallel_line_groups[0]    # Second group for vertical lines
-    
-    # Calculate average angles
-    def get_avg_angle(lines):
-        angles = []
-        for line in lines:
-            x1, y1, x2, y2 = line
-            angle = np.arctan2(y2 - y1, x2 - x1)
-            angles.append(angle)
-        return np.mean(angles)
-    
-    horizontal_angle = get_avg_angle(horizontal_lines)
-    vertical_angle = get_avg_angle(vertical_lines)
-    
-    # Calculate perpendicular angles
-    horizontal_perp = horizontal_angle + np.pi/2  # Perpendicular to horizontal lines
-    #vertical_perp = vertical_angle + np.pi/2      # Perpendicular to vertical lines
-    vertical_perp= horizontal_angle
-    vertical_angle=horizontal_perp
-
-    if debug==1:
-        print("H: "+str(np.rad2deg(horizontal_angle))+" | Hp: "+str(np.rad2deg(horizontal_perp)))
-        print("V: "+str(np.rad2deg(vertical_angle))+" | Vp: "+str(np.rad2deg(vertical_perp)))
-
-    # Find reference lines for offsets
-    # For horizontal offset: use the left-most vertical line
-    left_vertical = min(vertical_lines, key=lambda l: min(l[0], l[2]))
-    # For vertical offset: use the bottom-most horizontal line
-
-    if side=="spodaj":
-        bottom_horizontal = max(horizontal_lines, key=lambda l: max(l[1], l[3]))
-    elif side=="zgoraj":
-        bottom_horizontal = min(horizontal_lines, key=lambda l: min(l[1], l[3]))
-    
-    # Get reference points
-    # For horizontal offset: bottom point of left vertical line
-    x_vert_ref = min(left_vertical[0], left_vertical[2])
-
-    if side=="spodaj":
-        y_vert_ref = max(left_vertical[1], left_vertical[3])
-    elif side=="zgoraj":
-        y_vert_ref = min(left_vertical[1], left_vertical[3])
-    
-    # For vertical offset: left point of bottom horizontal line
-    x_horz_ref = min(bottom_horizontal[0], bottom_horizontal[2])
-    
-    y_horz_ref = max(bottom_horizontal[1], bottom_horizontal[3])
-
-    # Calculate grid origin point with both offsets
-    #x_start = x_vert_ref + horizontal_offset * np.cos(horizontal_perp)
-    #y_start = y_horz_ref - vertical_offset * np.sin(vertical_perp)
-    x_start = x_vert_ref + horizontal_offset * np.cos(horizontal_angle)
-
-    if side=="spodaj":
-        y_start = y_horz_ref - vertical_offset * np.sin(vertical_angle)-2*point_spacing_y* np.sin(vertical_angle)
-    elif side=="zgoraj":
-        y_start = y_horz_ref + vertical_offset * np.sin(vertical_angle)
-
-    # Create 3x3 grid
-    grid_points = []
-    for row in range(3):
-        row_points = []
-        for col in range(3):
-            # Calculate point position
-            #x = x_start + col * point_spacing * np.cos(vertical_angle)
-            #y = y_start + row * point_spacing * np.sin(horizontal_angle)
-            x = x_start + col * point_spacing_x * np.cos(horizontal_angle)
-            y = y_start + row * point_spacing_y * np.sin(vertical_angle)
-            row_points.append((int(x), int(y)))
-        grid_points.append(row_points)
-    
-    # Convert to numpy array
-    grid_points = np.array(grid_points)
-    
-    # Visualization
-    if show_result and prikazi_vmesne_korake==1:
-        # Draw original lines
-        for line in horizontal_lines:
-            cv.line(vis_image, (line[0], line[1]), (line[2], line[3]), (0, 255, 0), 2)  # Green for horizontal
-        for line in vertical_lines:
-            cv.line(vis_image, (line[0], line[1]), (line[2], line[3]), (0, 0, 255), 2)  # Red for vertical
-        
-        # Draw offset reference lines
-        # Horizontal offset line (perpendicular to horizontal lines)
-        x_h_end = x_vert_ref + horizontal_offset * np.cos(horizontal_perp)
-        y_h_end = y_vert_ref + horizontal_offset * np.sin(horizontal_perp)
-        cv.line(vis_image, (int(x_vert_ref), int(y_vert_ref)), (int(x_h_end), int(y_h_end)), 
-                (255, 255, 0), 1, cv.LINE_AA)
-        
-        # Vertical offset line (perpendicular to vertical lines)
-        x_v_end = x_horz_ref + vertical_offset * np.cos(vertical_perp)
-        y_v_end = y_horz_ref + vertical_offset * np.sin(vertical_perp)
-        cv.line(vis_image, (int(x_horz_ref), int(y_horz_ref)), (int(x_v_end), int(y_v_end)), 
-                (255, 0, 255), 1, cv.LINE_AA)
-        
-        # Draw grid points
-        for row in range(3):
-            for col in range(3):
-                x, y = grid_points[row, col]
-                cv.circle(vis_image, (x, y), 5, (0, 255, 255), -1)  # Yellow points
-                cv.putText(vis_image, f"{row},{col}", (x+10, y+10), 
-                           cv.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
-        # Draw reference points
-        cv.circle(vis_image, (int(x_vert_ref), int(y_vert_ref)), 5, (255, 0, 0), -1)  # Blue - vertical ref
-        if debug==1:
-            print("BLUE dot: x="+str(x_vert_ref)+" y="+str(y_vert_ref))
-        cv.circle(vis_image, (int(x_horz_ref), int(y_horz_ref)), 5, (0, 0, 255), -1)  # Red - horizontal ref
-        if debug==1:
-            print("RED dot: x="+str(x_horz_ref)+" y="+str(y_horz_ref))
-        cv.circle(vis_image, (int(x_start), int(y_start)), 5, (0, 255, 0), -1)        # Green - grid origin
-        
-        cv.imshow("Grid with Perpendicular Offsets", vis_image)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
-    
-    return vis_image, grid_points, grid_points[0, 0], horizontal_offset, vertical_offset
-
+# funkcija za zaznavanje osvetljenih lukenj za pine (krogci):
 def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_results=True, circularity_threshold=0.7, max_contour_gap=10):
     """
     Detects bright white objects in an image using thresholding and edge detection,
@@ -298,116 +158,10 @@ def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_res
     
     return center_points, thresholded, edges
 
-def detect_parallel_lines_in_roi(image, roi, rho=1, theta=np.pi/180, threshold=50, 
-                               min_line_length=50, max_line_gap=20, 
-                               angle_threshold=np.pi/18, show_result=False):
-    """
-    Detects lines using Hough Transform within a specified ROI and groups them by similar angles.
-    
-    Args:
-        image: Input image (grayscale or color)
-        roi: Region of interest as (x, y, width, height)
-        rho: Distance resolution of accumulator in pixels
-        theta: Angle resolution of accumulator in radians
-        threshold: Accumulator threshold parameter
-        min_line_length: Minimum line length
-        max_line_gap: Maximum allowed gap between line segments
-        angle_threshold: Angle difference threshold for considering lines parallel (in radians)
-        show_result: Whether to display the detected lines
-    
-    Returns:
-        List of groups of parallel lines, where each group is a list of lines in format [x1, y1, x2, y2]
-        (coordinates are relative to the full image)
-    """
-    # Extract ROI coordinates
-    x, y, w, h = roi
-    
-    # Convert to grayscale if needed
-    if len(image.shape) == 3:
-        gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    else:
-        gray = image
-    
-    # Extract ROI from image
-    roi_image = gray[y:y+h, x:x+w]
-    
-    # Edge detection within ROI
-    edges = cv.Canny(roi_image, 50, 150, apertureSize=3)
-    
-    # Line detection using Hough Transform within ROI
-    lines = cv.HoughLinesP(edges, rho, theta, threshold, 
-                          minLineLength=min_line_length, 
-                          maxLineGap=max_line_gap)
-    
-    if lines is None:
-        return []
-    
-    # Convert lines from ROI coordinates to full image coordinates
-    lines_full_image = []
-    for line in lines:
-        x1_roi, y1_roi, x2_roi, y2_roi = line[0]
-        lines_full_image.append([x1_roi + x, y1_roi + y, x2_roi + x, y2_roi + y])
-    
-    # Calculate angles for each line
-    line_angles = []
-    for line in lines_full_image:
-        x1, y1, x2, y2 = line
-        angle = math.atan2(y2 - y1, x2 - x1)
-        # Normalize angle to be between 0 and pi
-        if angle < 0:
-            angle += np.pi
-        line_angles.append(angle)
-    
-    # Group lines by similar angles
-    angle_groups = defaultdict(list)
-    for i, angle in enumerate(line_angles):
-        # Find the closest existing group
-        found_group = False
-        for group_angle in angle_groups:
-            # Check if angle is within threshold of any group angle
-            if abs(angle - group_angle) < angle_threshold or \
-               abs(angle - group_angle - np.pi) < angle_threshold or \
-               abs(angle - group_angle + np.pi) < angle_threshold:
-                angle_groups[group_angle].append(i)
-                found_group = True
-                break
-        
-        # If no matching group found, create a new one
-        if not found_group:
-            angle_groups[angle].append(i)
-    
-    # Create parallel line groups (in full image coordinates)
-    parallel_line_groups = []
-    for group in angle_groups.values():
-        parallel_lines = [lines_full_image[i] for i in group]
-        parallel_line_groups.append(parallel_lines)
-    
-    # Visualize if requested
-    if show_result:
-        display_image = image.copy()
-        colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255), 
-                 (255, 255, 0), (0, 255, 255), (255, 0, 255)]
-        
-        # Draw ROI rectangle
-        cv.rectangle(display_image, (x, y), (x+w, y+h), (255, 255, 255), 2)
-        
-        # Draw lines
-        for i, group in enumerate(parallel_line_groups):
-            color = colors[i % len(colors)]
-            for line in group:
-                x1, y1, x2, y2 = line
-                cv.line(display_image, (x1, y1), (x2, y2), color, 2)
-        if prikazi_vmesne_korake==1:
-            cv.imshow("Detected Parallel Lines in ROI", display_image)
-            cv.waitKey(0)
-            cv.destroyAllWindows()
-    
-    return parallel_line_groups
-
-
-
+# funkcija za določanje oblike objektov v sliki 
+# (pini, pini v bowlu iz enega/drugega pogleda):
 def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, canny_low=50, canny_high=150):
-    """Enhanced version that better detects trapezoidal shapes"""
+
     if image is None or image.size == 0:
         print("Error: Invalid image input")
         return None, None, None
@@ -489,16 +243,20 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             'circularity': circularity,
             'bounding_rect': cv.boundingRect(contour_absolute)
         }
+        
+        # Prepoznavanje oblik glede na pogoje:
         if (aspect_ratio > 1 and aspect_ratio<3 and 90 < area < 170 and circularity>0.3):
             shapes['pins'].append(shape_info)
             pins_centers.append([abs_cx,abs_cy])
             if debug_pins:
                 print("pin: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius))
+        
         elif (170< area < 300 and circularity<0.7 and 10<radius<35):
             shapes['pin_in_bowl'].append(shape_info)
             pins_in_bowl_centers.append([abs_cx,abs_cy])
             if debug_pins:
                 print("pin in bowl: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius))
+        
         # za kamero ki ima pin bowl bližje:
         elif (220<area<600 and radius>8):#20<area<600 and radius>8
             shapes['pin_in_bowl_2'].append(shape_info)
@@ -506,16 +264,13 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             if debug_pins:
                 print("pin in bowl 2: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius))
 
-                #pin in bowl 2: 3.9701452740183676|304.5|0.5098558781956003|18.828269958496094
-#pin in bowl: 5.199992322412535|197.5|0.3559527569360529|18.506855010986328
     if debug_pins:
         print("")
 
 
     return pins_in_bowl_2_centers,pins_in_bowl_centers,pins_centers,shapes, (x, y, w, h) if region_of_interest else None, edges
 
-
-
+# funkcija za določanje barve pina:
 def classify_color(hsv_values):
     """Classifies color based on HSV values"""
     hue, sat, val = hsv_values
@@ -532,6 +287,7 @@ def classify_color(hsv_values):
     elif hue < 255: return "pink"
     return "red"
 
+# funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
     """
     Enhanced visualization with separate area display boxes
@@ -615,6 +371,8 @@ def visualize_detection(slika, shapes, roi_rect=None):
     
     return display
 
+# funkcija za določanje, če je na spodnji ali zgornji polovici
+# slike 3x3 grid lukenj za pine:
 def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=False):
     """
     Determines if there are more detected objects towards the bottom or top of the image.
@@ -686,47 +444,84 @@ def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=
 
 if __name__ == "__main__":
 
+    radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
 
-    radij_tocnosti=20
+    setup=0           # spremenljivka za setup - opravljanje kalibracije s pomočjo lučk v luknjah
 
-    setup=0
+    x=0               # oporna spremenljivka za bolj berljivo kodo
+    y=1               # oporna spremenljivka za bolj berljivo kodo
 
-    x=0
-    y=1
-
+    # tabela vstavljenih pinov (3x3 grid) gledano iz kamere,
+    # ki ima luknje za vstavljanje na zgornji polovici slike
     inserted_pins_zgoraj=[[0,0,0],
-                   [0,0,0],
-                   [0,0,0]]
+                          [0,0,0],
+                          [0,0,0]]
+                   
+    # tabela vstavljenih pinov (3x3 grid) gledano iz kamere,
+    # ki ima luknje za vstavljanje na spodnji polovici slike
     inserted_pins_spodaj=[[0,0,0],
-                     [0,0,0],
-                     [0,0,0]]
+                          [0,0,0],
+                          [0,0,0]]
+                          
     frame_cnt=0
+    
+    # tabeli za shranjevanje zadnjega stanja tabel vstavljenih pinov:
     old_inserted_pins_zgoraj=[[0,0,0],[0,0,0],[0,0,0]]
     old_inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
+    
+    # spremenljivka za spremljanje največjega števila vstavljenih pinov
+    # (za fazo pobiranja iz lukenj)
     odvzemanje_tracker_max=0
     odvzemanje_tracker_max_2=0
+    
+    # spremenljivka za preprečevanje nepravilnih oz. predčasnih sprememb podatkov
     odvzemanje_flag_once=0
 
-    trenutno_stanje=[[0,0,0],[0,0,0],[0,0,0]] # gledano iz kamere, ki ima grid spodaj
-
+    # tabela pinov v posodici
+    # (podatek iz slike kamere, ki ima posodico na spodnji polovici slike)
     posodica_pod_roko=[]
+    
+    # spremenljivki za spremljanje začetnega iz končnega frame-a,
+    # ko je bowl s pin-i pokrit z roko
     start_frame_pokrivanja_bowla=0
     stop_frame_pokrivanja_bowla=0
 
+    # spremenljivka za štetje pinov:
     pin_count=0
+    
+    # spremenljivka (string) za beleženje trenutne "akcije"
     action="vstavljanje"
 
-    for frame in range(550):
+    # spremenljivka za beleženje številke frame-a
+    frame=0
+    
+    # spremenljivka za potek zanke:
+    video="play"
+
+# zanka za sprehod čez vse slike videja:
+    #for frame in range(550):
+    while video!="stop"
+    
+        #shranimo sliki iz obeh kamer izbranega poskusa:
         slika = get_video_frame("64210323_video_5", frame+1)
         slika_2 = get_video_frame("64210323_video_1", frame+1)
-        if slika is None:
-            print("Failed to load image")
+        
+        if slika is None
+            print("Failed to load image, 1. video, frame: "+str(frame))
+            video="stop"
+            action="konec" # preprečimo obdelavo slike
+        if slika2 is None
+            print("Failed to load image, 2. video, frame: "+str(frame))
+            video="stop"
+            action="konec" # preprečimo obdelavo slike
+            
         elif action!="konec":
-
-                        # Convert to BGR for processing
+            # Convert to BGR for processing
             image_bgr = cv.cvtColor(slika, cv.COLOR_RGB2BGR)
             image_bgr_2 = cv.cvtColor(slika_2, cv.COLOR_RGB2BGR)
-
+            
+            # pred začetkom je potrebno pridobiti podatke (iz obeh kamer)
+            # glede središč osvetljenih lukenj
             if setup==0 or setup==2:
                 centers, threshold_img, edge_img = detect_bright_objects(slika)
                 centers_2, threshold_img_2, edge_img_2 = detect_bright_objects(slika_2)
@@ -760,53 +555,29 @@ if __name__ == "__main__":
                                                     canny_low=canny_low,
                                                     canny_high=canny_high)
                 
+                # Ko najdemo središča lukenj, lahko določimo kje ima
+                # katera kamera ima 3x3 grid na spodnji/zgornji strani
                 if setup==1 or setup==0:
                     stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
                     stran_lukenj_2 = detect_object_position_bias(image_bgr_2, shapes_2, show_result=True)
-                    #print("Luknje za pine so "+stran_lukenj)
+
+                    # po zaznavanju postavimo spremenljivko setup na primerno vrednost
                     if setup==1:
                         setup=3
                     else:
                         setup=2
 
-                #if pin_in_bowl_centers!=[]:
-                #    prikazi_vmesne_korake=1
-
                 if prikazi_vmesne_korake==1 or debug_outlines==1:
                     # Visualize
                     result = visualize_detection(image_bgr, shapes, roi)
                     result_2 = visualize_detection(image_bgr_2, shapes_2, roi)
-                """
-                # Detect parallel lines in ROI
-                parallel_line_groups = detect_parallel_lines_in_roi(
-                image_bgr, 
-                roi,
-                angle_threshold=np.pi/18,  # 10 degrees
-                show_result=True
-                )
-                if parallel_line_groups and len(parallel_line_groups) >= 2:
-                    # Create offset grid
-                    vis_img, grid_points, first_point, h_off, v_off = create_offset_grid_from_lines(
-                        image_bgr, 
-                        parallel_line_groups,
-                        stran_lukenj,
-                    )
-                    
-                    # Print results
-                    if debug==1:
-                        print("First point coordinates:", first_point)
-                        print("Horizontal offset from vertical line:", h_off)
-                        print("Vertical offset from horizontal line:", v_off)
-                        print("\nFull 3x3 grid:")
-                        print(grid_points)
-                """
 
                 if debug==1:
                     print(f"Found {len(centers)} bright objects at positions:")
                     for i, center in enumerate(centers):
                         print(f"Object {i+1}: {center}")
 
-                    print("PINS:")
+                    print("PIN centers:")
                     print(pin_centers)
 
                 if prikazi_vmesne_korake==1:
@@ -819,13 +590,8 @@ if __name__ == "__main__":
 
                     cv.waitKey(0)
                     cv.destroyAllWindows()
-                
-                #currently_found_pins=[[0,0,0],[0,0,0],[0,0,0]]
 
                 prikazi_vmesne_korake=0
-
-                #if frame==133:
-                #    prikazi_vmesne_korake=1
 
 
                 # na podlagi kamere odločimo katere točke za pine uporabiti oz. katera kamera gleda odložene pine
@@ -843,20 +609,19 @@ if __name__ == "__main__":
                     centers_zgoraj_temp=centers
                     posodica_pod_roko=pin_in_bowl_2_centers+pin_in_bowl_centers
 
-                #sortiranje točk lukenj za pine:
+                # sortiranje sredinskih točk lukenj za pine:
                 centers_spodaj_temp.sort()
                 centers_zgoraj_temp.sort()
+                # opozorilo: .sort v 2D seznamu sortira glede na velikost prve koordinate v paru
 
                 centers_spodaj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
                 centers_zgoraj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
-
-                #for aa in range(len(centers_spodaj_temp)):
-                #    centers_final[aa]=centers_temp[aa]
-
-                s_max_spodaj=0
-                s_min_spodaj=100000
-                s_mid_spodaj=0
                 
+                s_max_spodaj=0          # največja y koordinata točk sredin lukenj (3x3 grid-a)
+                s_min_spodaj=100000     # najmanjša y koordinata točk sredin lukenj
+                s_mid_spodaj=0          # srednja y koordinata točk sredin lukenj
+                
+                # določanje primerne velikosti s_max,s_min,s_mid:
                 for s in range(len(centers_spodaj_temp)):
                     if centers_spodaj_temp[s][1]>s_max_spodaj:
                         s_max_spodaj=centers_spodaj_temp[s][1]
@@ -864,6 +629,7 @@ if __name__ == "__main__":
                         s_min_spodaj=centers_spodaj_temp[s][1]
                     if (s_max_spodaj-5)>centers_spodaj_temp[s][1]>(s_min_spodaj+5):
                         s_mid_spodaj=centers_spodaj_temp[s][1]
+                # opozorilo: bi lahko bilo izven main loopa?
 
                 s_max_zgoraj=0
                 s_min_zgoraj=100000
@@ -877,14 +643,12 @@ if __name__ == "__main__":
                     if (s_max_zgoraj-5)>centers_zgoraj_temp[s][1]>(s_min_zgoraj+5):
                         s_mid_zgoraj=centers_zgoraj_temp[s][1]
 
-                #print(str(s_max)+str(s_mid)+str(s_min))
-
                 # spremenljivke za indexiranje
                 top=0
                 mid=0
                 bottom=0 
-                # s max je največji y kar je dol na sliki
 
+                # določanje razporeditve točke (primerno glede na pozicijo kamere)
                 for ss in range(len(centers_spodaj_temp)):
 
                     if (s_max_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_max_spodaj-5):
@@ -904,11 +668,6 @@ if __name__ == "__main__":
                 top=0
                 mid=0
                 bottom=0 
-                # s max je največji y kar je dol na sliki
-                
-                #print("centri zgoraj:")
-                #print(centers_zgoraj_temp)
-                #print((str(s_max_zgoraj))+"|"+str(s_mid_zgoraj)+"|"+str(s_min_zgoraj))
                 
                 for ss in range(len(centers_zgoraj_temp)):
                     
@@ -925,13 +684,14 @@ if __name__ == "__main__":
                         centers_zgoraj_final[8-top]=centers_zgoraj_temp[ss] # prvi 3je
                         top=top+1
 
-                #print("centri zgoraj2:")
-                #print(centers_zgoraj_final)
-                #print("-------")
-
+                # procesiranje slik izvedemo le, če je setup dokončno opravljen:
                 if setup==3:
+                    
+                    # v primeru odvzemanje se v vsakem ciklu ponastavi seznam vstavljenih pinov
                     if action=="odvzemanje" and len(pin_centers_spodaj)>0:
                         inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
+                        
+                    # za vsak vstavljen pin najdemo primerno točko iz 3x3 grid-a lukenj:
                     for pins in range(len(pin_centers_spodaj)):
                         tracking_cnt=0
                         for luknje in range(len(centers_spodaj_final)):
@@ -949,20 +709,10 @@ if __name__ == "__main__":
                             pin_index=pins
                             
                             if pin_centers_zgoraj[pin_index][x]>(centers_zgoraj_final[luknje][x]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][x]<(centers_zgoraj_final[luknje][x]+radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]>(centers_zgoraj_final[luknje][y]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]<(centers_zgoraj_final[luknje][y]+radij_tocnosti/2) :
-                                #print("")
-                                #print(pin_centers_zgoraj)
-                                #print(centers_zgoraj_final)
-                                #print("")
                                 luknje=len(centers_zgoraj_final)-1-luknje
                                 if inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
                                     inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]=1
-                    
-                    #if action=="odvzemanje":
-                    #    print("!!!!!!!!!!!!")
-                    #    print(inserted_pins)
-                    #    print(inserted_pins_tmp)
-                    #    print(pin_centers)
-                    #    print("!!!!!!!!!!!!")            
+                               
                     
 
                     sprememba=0
@@ -1026,7 +776,6 @@ if __name__ == "__main__":
                         if odvzemanje_flag_once>2:
                             odvzemanje_tracker_max=pin_count
                             odvzemanje_flag_once=0
-                        #odvzemanje_flag_once=1
                     elif pin_count<odvzemanje_tracker_max:
                         sprememba=1
                         odvzemanje_tracker_max=pin_count
@@ -1035,7 +784,6 @@ if __name__ == "__main__":
                     if sprememba==1 and action=="odvzemanje":
                         if debug_prikaz==1:
                             prikazi_vmesne_korake=1
-                        #if debug_odvzemanje==1:
                         print("-----------------")
                         print("frame: "+str(frame))
                         print("faza: odvzemanje")
@@ -1097,5 +845,7 @@ if __name__ == "__main__":
                         action="konec"
                     elif action=="konec":
                         print("konec, frame: "+str(frame))
-
+                        
+        frame=frame+1
+        
     print(zgodovina)
