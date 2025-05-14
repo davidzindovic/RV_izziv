@@ -21,11 +21,13 @@ import json
 #možna izboljšava -> samodejen ROI
 #                 -> izboljšava parametrov za pine v 3x3 gridu
 
+# to do: false positive tabela, centr bowla pinov fixed razdalja
+
 #-------------ZA UPORABNIKA---------------------------
 
 debug = 0
 debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=0            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
+debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
 debug_pins=0               # za podatke o najdenih pinih
 debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
 debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
@@ -64,13 +66,13 @@ def get_video_frame(video_path, frame_number):
     """(Previous implementation remains the same)"""
     
     #PC doma:
-    video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
+    #video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
     
     #Laptop šola:
     #video_dir = 'C:\\Users\\Vegova\\Documents\\zindo\\'
     
     #Laptop osebni:
-    #
+    video_dir = 'C:\\Users\\david\\Desktop\\izziv main\\'
     
     video_path = video_dir + video_path + ".mp4"
     cap = cv.VideoCapture(video_path)
