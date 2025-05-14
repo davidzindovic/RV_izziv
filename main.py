@@ -23,19 +23,32 @@ import json
 
 # to do: false positive tabela, centr bowla pinov fixed razdalja
 
+    #naj loop gleda frame-e: - TP -> naredi da bo to sprememba stanja
+    #FN -> naredi da bo spremljal če se stanje v primernem razponu ne spremeni (poglej pravilno: če v x-y razponu pri generiranem spremenijo stvari (count framov npr))
+    #TN -> generirani so zaznali spremembo akcije, pravilen pa ne
+    #FP -> generirani ni zaznal spremembe akcije, pravilen pa je
+
 #-------------ZA UPORABNIKA---------------------------
 
 debug = 0
 debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
+debug_outlines=0            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
 debug_pins=0               # za podatke o najdenih pinih
 debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
 debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
 debug_prikazi_vsak_frame=0  # zastavica za izris vsakega frame-a
 debug_akcije=0              # zastavica za izpis trenutnega stanja posodic v skledi in trenutne akcije
+debug_false_positive=1
+
+path_do_videjev='C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
 
 ime_videja="64210323_video_7"
 ime_videja_2="64210323_video_3"
+
+pravilna_anotacija_path="C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\rocna_anotacija\\"
+
+ime_pravilna_anotacija="64210323_video_7"
+ime_pravilna_anotacija_2="64210323_video_3"
 
 #-----------------------------------------------------------------
 
@@ -50,6 +63,20 @@ last_action_num=1
 
 # trenutni .json file:
 zgodovina=[]
+
+# tabela za false positive (SW-real):
+false_positive_tabela=[[0,0], #T-P,F-P     T=True,F=False
+                       [0,0]] #F-N,T-N     P=Positive,N=Negative
+
+# spremenljivke za false_positive_tabelo:
+num_true_positive=0
+num_false_positive=0
+num_false_negative=0
+num_true_negative=0
+
+# spremenljivke za število pinov:
+num_pins_verified=0
+num_pins_hypo=0
 
 # spremeljivka za shranjevanje zaključnega frame-a zadnje "akcije",
 # saj se start/stop frame (številki) ponastavita po koncu akcije
@@ -72,8 +99,10 @@ def get_video_frame(video_path, frame_number):
     #video_dir = 'C:\\Users\\Vegova\\Documents\\zindo\\'
     
     #Laptop osebni:
-    video_dir = 'C:\\Users\\david\\Desktop\\izziv main\\'
+    #video_dir = 'C:\\Users\\david\\Desktop\\izziv main\\'
     
+    video_dir=path_do_videjev
+
     video_path = video_dir + video_path + ".mp4"
     cap = cv.VideoCapture(video_path)
     
@@ -516,6 +545,75 @@ def create_annotation_json(filename, annotations_array):
     return json_filename
 
 
+def primerjava_anotacij(fresh_json,correct_json):
+    # Opening JSON file
+    file_generiran = open(fresh_json)
+    file_pravilen = open(correct_json)
+
+    # returns JSON object as a dictionary
+    json_generiran = json.load(file_generiran)
+    json_pravilen = json.load(file_pravilen)
+
+    # Iterating through the json list
+    podatki_generirani=json_generiran['annotations']
+    podatki_pravilni=json_pravilen['annotations']
+
+    toleranca_faljenega_framea=20
+    p=0
+    num_true_positive=0
+    num_false_positive=0
+    num_true_negative=0
+    num_false_negative=0
+
+
+    for g in range(len(podatki_generirani)):
+        tp=False
+        fp=False
+        tn=False
+        fn=False
+        #for action in ["frame_start","frame_stop"]:
+        while p<len(podatki_pravilni) and (tp==False and fp==False and tn==False and fn==False):
+            akcija_g=podatki_generirani[g].get("event")
+            akcija_p=podatki_pravilni[p].get("event")
+            if (int(podatki_generirani[g].get("frame_start"))-toleranca_faljenega_framea)<=int(podatki_pravilni[p].get("frame_start")) and (int(podatki_generirani[g].get("frame_stop"))+toleranca_faljenega_framea)>=int(podatki_pravilni[p].get("frame_stop")) and (akcija_g==akcija_p):
+                tp=True
+            #else:
+            #    tn=True
+            p=p+1
+        if tp==False:
+            tn=True
+
+        if tp==True:
+            num_true_positive+=1
+        elif fp==True:
+            num_false_positive+=1
+        elif tn==True:
+            num_true_negative+=1
+        elif fn==True:
+            num_false_negative+=1
+
+        tp=False
+        fp=False
+        tn=False
+        fn=False
+
+    print("Analiza anotacije:")
+    print("                Pravilna anotacija")
+    print("                ------------------")
+    print("               |Positive|Negative")
+    print("Moja     |True |"+str(num_true_positive)+" | "+str(num_true_negative))
+    print("Anotacija|False|"+str(num_false_positive)+" | "+str(num_false_negative))
+    print("----------------------------------")
+
+    num_true_positive=0
+    num_false_positive=0
+    num_true_negative=0
+    num_false_negative=0
+
+    # Closing file
+    file_generiran.close()
+    file_pravilen.close()
+
 if __name__ == "__main__":
 
     radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
@@ -589,6 +687,9 @@ if __name__ == "__main__":
     action_assigned=False
     action_start_frame=0
     action_end_frame=0
+
+
+
 
 # zanka za sprehod čez vse slike videja:
     #for frame in range(550):
@@ -830,8 +931,10 @@ if __name__ == "__main__":
                         for p in range(9):
                             if inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==1 and action=="vstavljanje":
                                 pin_count=pin_count+1
+                                
                             elif inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==0 and action=="odvzemanje":
                                 pin_count=pin_count-1
+                        num_pins_verified=pin_count
                         
 
                         if action=="odvzemanje" and pin_count>odvzemanje_tracker_max:
@@ -859,6 +962,7 @@ if __name__ == "__main__":
                             
                             if action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
                                 last_action="odlaganje_pina"
+                                num_pins_hypo+=1
 
                                 action_start_frame=last_action_frame+1
                                 action_end_frame=frame-1
@@ -921,6 +1025,7 @@ if __name__ == "__main__":
 
                             if action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
                                 last_action="prijemanje_pina"
+                                num_pins_hypo-=1
 
                                 action_start_frame=last_action_frame+1
                                 action_end_frame=frame-1
@@ -1010,7 +1115,7 @@ if __name__ == "__main__":
 
                                     zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
                                     last_action_num=4
-                                    print("konc uvoda: "+str(last_action_frame)+"  "+str(start_frame_pokrivanja_bowla))
+                                    #print("konc uvoda: "+str(last_action_frame)+"  "+str(start_frame_pokrivanja_bowla))
                                     last_action_frame=action_end_frame
                                     last_action="prijemanje_pina"
 
@@ -1080,6 +1185,7 @@ if __name__ == "__main__":
                                 print("konec, frame: "+str(frame))
 
         frame=frame+1
+
         action_assigned=False
 
     if debug_sprotno_stanje==1:
@@ -1089,3 +1195,7 @@ if __name__ == "__main__":
     print("JSON file "+ime_videja+" created successfully!")
     create_annotation_json(ime_videja_2, zgodovina)
     print("JSON file "+ime_videja_2+" created successfully!")
+
+    if debug_false_positive==1:
+        primerjava_anotacij(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
+        primerjava_anotacij(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
