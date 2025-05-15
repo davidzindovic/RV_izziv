@@ -21,24 +21,22 @@ import json
 #možna izboljšava -> samodejen ROI
 #                 -> izboljšava parametrov za pine v 3x3 gridu
 
-# to do: false positive tabela, centr bowla pinov fixed razdalja
-
-    #naj loop gleda frame-e: - TP -> naredi da bo to sprememba stanja
-    #FN -> naredi da bo spremljal če se stanje v primernem razponu ne spremeni (poglej pravilno: če v x-y razponu pri generiranem spremenijo stvari (count framov npr))
-    #TN -> generirani so zaznali spremembo akcije, pravilen pa ne
-    #FP -> generirani ni zaznal spremembe akcije, pravilen pa je
+# to do: centr bowla pinov fixed razdalja oz. sprotno določanje lokacije ciljnih lukenj
+# to do: preveri logiko
 
 #-------------ZA UPORABNIKA---------------------------
 
 debug = 0
 debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=0            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
-debug_pins=0               # za podatke o najdenih pinih
+debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
+debug_pins=0                # za podatke o najdenih pinih
 debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
 debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
 debug_prikazi_vsak_frame=0  # zastavica za izris vsakega frame-a
 debug_akcije=0              # zastavica za izpis trenutnega stanja posodic v skledi in trenutne akcije
-debug_false_positive=1
+debug_false_positive=0      # zastavica za pridobitev true positive tabele za spremembo dogodkov
+debug_anotacija=0           # zastavice za pridobitev primerjave generirane in referenčne anotacije
+debug_robovi_kvadra=0
 
 path_do_videjev='C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
 
@@ -352,6 +350,40 @@ def classify_color(hsv_values):
     elif hue < 255: return "pink"
     return "red"
 
+def sprememba_robov(image):
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    
+    blurred = cv.GaussianBlur(gray, (7, 7), 2)
+    edges = cv.Canny(blurred, 40, 120, apertureSize=3)
+    lines = cv.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=40, minLineLength=40, maxLineGap=15)
+    
+    
+    hor=[]
+    vert=[]
+
+
+    # Visualize raw lines (for debugging)
+    line_img = np.zeros_like(image)
+    line_kvad = np.zeros_like(image)
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        if x1>150 and x2<350 and y1>50 and y2<350:
+            cv.line(line_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            if abs(x1-x2)<50 and abs(y1-y2)>100:
+                vert.append((x1,y1,x2,y2))
+                print("V angle: "+str(math.degrees(math.atan(abs((x2-x1)/(y2-y1))))))
+                cv.line(line_kvad, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            if 200>abs(x1-x2)>100 and abs(y1-y2)<20:
+                hor.append((x1,y1,x2,y2))
+                print("H angle: "+str(math.degrees(math.atan(abs((y2-y1)/(x2-x1))))))
+                cv.line(line_kvad, (x1, y1), (x2, y2), (255, 0, 0), 2)
+    if debug_robovi_kvadra==1:
+        cv.imshow("Raw Hough Lines", line_img)  # Debug window
+        cv.imshow("Oblika", line_kvad)  # Debug window
+    
+    #izračun transformacije:
+     
+
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
     """
@@ -614,7 +646,7 @@ def primerjava_anotacij(fresh_json,correct_json):
     file_generiran.close()
     file_pravilen.close()
 
-def primerjava_frameov(fresh_json,correct_json):
+def primerjava_change_eventov(fresh_json,correct_json):
     # Opening JSON file
     file_generiran = open(fresh_json)
     file_pravilen = open(correct_json)
@@ -628,24 +660,80 @@ def primerjava_frameov(fresh_json,correct_json):
     podatki_pravilni=json_pravilen['annotations']
 
     toleranca_faljenega_framea=20
-    p=0
+
     num_true_positive=0
     num_false_positive=0
     num_true_negative=0
     num_false_negative=0
     
-    event_change_flag_generiran=False
-    event_change_flag_pravilen=False
     
-    last_frame_event_generiran="prazna_roka"
-    current_frame_event_generiran="prazna_roka"
-    
-    last_frame_event_pravilen="prazna_roka"
-    current_frame_event_pravilen="prazna_roka"
-    
+    # sprememba eventa mora biti enaka (in okviren time_frame)
+    # TP - res se je zgodila sprememba event
+    # TN - ni se zgodila sprememba program pa misli da se je
+    # FP - zgodila se je sprememba, program pa misli da se ni
+    # FN - ni se zgodila sprememba, program prav tako misli da se ni
+
+
     for f in range(podatki_generirani[-1].get("frame_stop")):   #moramo najti vsak podatek za vsak frame
-        for f_p in range(len(podatki_generirani)):              #za vsak generiran annotation
-            if f>=podatki_generirani[f_p].get("frame_start") and f<=podatki_generirani[f_p].get("frame_stop") and 
+
+        event_log_generiran=[0,0,False,"",""] #prejsnji_frame,zdejsnji_frame,a_se_je_zgodila_sprememba,prejsnji_event,zdejsnji event
+        event_log_pravilen=[0,0,False,"",""]
+
+        current_frame=f+1
+
+        event_log_generiran[0]=current_frame-1
+        event_log_generiran[1]=current_frame
+
+        event_log_pravilen[0]=current_frame-1
+        event_log_pravilen[1]=current_frame
+
+        event_found=False
+        event_cnt=0
+        while not event_found and event_cnt<len(podatki_generirani) and event_cnt<len(podatki_pravilni):
+            if (current_frame-1)>=podatki_generirani[event_cnt].get("frame_start") and (current_frame-1)<=podatki_generirani[event_cnt].get("frame_stop") and event_log_generiran[3]=="":
+                event_log_generiran[3]=podatki_generirani[event_cnt].get("event")
+            if (current_frame)>=podatki_generirani[event_cnt].get("frame_start") and (current_frame)<=podatki_generirani[event_cnt].get("frame_stop") and event_log_generiran[4]=="":
+                event_log_generiran[4]=podatki_generirani[event_cnt].get("event")
+            
+            if (current_frame-1)>=podatki_pravilni[event_cnt].get("frame_start") and (current_frame-1)<=podatki_pravilni[event_cnt].get("frame_stop") and event_log_pravilen[3]=="":
+                event_log_pravilen[3]=podatki_pravilni[event_cnt].get("event")
+            if (current_frame)>=podatki_pravilni[event_cnt].get("frame_start") and (current_frame)<=podatki_pravilni[event_cnt].get("frame_stop") and event_log_pravilen[4]=="":
+                event_log_pravilen[4]=podatki_pravilni[event_cnt].get("event")
+
+            event_cnt+=1
+
+            if event_log_generiran[3]!="" and event_log_generiran[4]!="" and event_log_pravilen[3]!="" and event_log_pravilen[4]!="":
+                event_found=True
+
+        #program misli da se je zgodila sprememba in se je v resnici:
+        if event_log_generiran[3]!=event_log_generiran[4] and event_log_pravilen[3]!=event_log_pravilen[4]:#and event_log_generiran[3]==event_log_pravilen[3] and event_log_generiran[4]==event_log_pravilen[4]
+            num_true_positive+=1
+        
+        #program misli da se je zgodila sprememba in se ni v resnici:  
+        elif event_log_generiran[3]!=event_log_generiran[4] and event_log_pravilen[3]==event_log_pravilen[4]:
+            num_true_negative+=1
+
+        #program misli da se ni zgodila sprememba in se je v resnici:  
+        elif event_log_generiran[3]==event_log_generiran[4] and event_log_pravilen[3]!=event_log_pravilen[4]:
+            num_false_positive+=1
+
+        #program misli da se ni zgodila sprememba in se ni v resnici:  
+        elif event_log_generiran[3]==event_log_generiran[4] and event_log_pravilen[3]==event_log_pravilen[4]:
+            num_false_negative+=1
+
+
+    print("Analiza sprememb eventov:")
+    print("")
+    print("                Pravilna anotacija")
+    print("                ------------------")
+    print("               |Positive|Negative")
+    print("Moja     |True |"+str(num_true_positive)+" | "+str(num_true_negative))
+    print("Anotacija|False|"+str(num_false_positive)+" | "+str(num_false_negative))
+    print("----------------------------------")
+
+    # Closing file
+    file_generiran.close()
+    file_pravilen.close()
             
 if __name__ == "__main__":
 
@@ -1230,5 +1318,9 @@ if __name__ == "__main__":
     print("JSON file "+ime_videja_2+" created successfully!")
 
     if debug_false_positive==1:
+        primerjava_change_eventov(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
+        primerjava_change_eventov(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
+
+    if debug_anotacija==1:
         primerjava_anotacij(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
         primerjava_anotacij(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
