@@ -614,6 +614,39 @@ def primerjava_anotacij(fresh_json,correct_json):
     file_generiran.close()
     file_pravilen.close()
 
+def primerjava_frameov(fresh_json,correct_json):
+    # Opening JSON file
+    file_generiran = open(fresh_json)
+    file_pravilen = open(correct_json)
+
+    # returns JSON object as a dictionary
+    json_generiran = json.load(file_generiran)
+    json_pravilen = json.load(file_pravilen)
+
+    # Iterating through the json list
+    podatki_generirani=json_generiran['annotations']
+    podatki_pravilni=json_pravilen['annotations']
+
+    toleranca_faljenega_framea=20
+    p=0
+    num_true_positive=0
+    num_false_positive=0
+    num_true_negative=0
+    num_false_negative=0
+    
+    event_change_flag_generiran=False
+    event_change_flag_pravilen=False
+    
+    last_frame_event_generiran="prazna_roka"
+    current_frame_event_generiran="prazna_roka"
+    
+    last_frame_event_pravilen="prazna_roka"
+    current_frame_event_pravilen="prazna_roka"
+    
+    for f in range(podatki_generirani[-1].get("frame_stop")):   #moramo najti vsak podatek za vsak frame
+        for f_p in range(len(podatki_generirani)):              #za vsak generiran annotation
+            if f>=podatki_generirani[f_p].get("frame_start") and f<=podatki_generirani[f_p].get("frame_stop") and 
+            
 if __name__ == "__main__":
 
     radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
