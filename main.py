@@ -24,19 +24,21 @@ import json
 # to do: centr bowla pinov fixed razdalja oz. sprotno določanje lokacije ciljnih lukenj
 # to do: preveri logiko
 
+#to do popravek pri logiki: pri odvzemanju naj ne gleda števila pinov v bowlu (fali) naj gleda raje 9-št odloženih
+#pri logiki dodati uteži za odločanje?
 #-------------ZA UPORABNIKA---------------------------
 
 debug = 0
 debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=0            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
+debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
 debug_pins=0                # za podatke o najdenih pinih
 debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
 debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
 debug_prikazi_vsak_frame=0  # zastavica za izris vsakega frame-a
 debug_akcije=0              # zastavica za izpis trenutnega stanja posodic v skledi in trenutne akcije
 debug_false_positive=0      # zastavica za pridobitev true positive tabele za spremembo dogodkov
-debug_anotacija=0           # zastavice za pridobitev primerjave generirane in referenčne anotacije
-debug_robovi_kvadra=1
+debug_anotacija=0           # zastavica za pridobitev primerjave generirane in referenčne anotacije
+debug_robovi_kvadra=0       # zastavica za izris in izpis robov main boarda
 
 path_do_videjev='C:\\Users\\david\\Desktop\\izziv main\\'
 
@@ -64,7 +66,7 @@ zgodovina=[]
 
 # robovi main boarda (za povprecenje robov vsakih 5 frameov):
 robovi=[]
-robovi_povp=[]
+robovi_povp=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
 old_robovi_povp=[]
 num_za_povp_robov=0
 
@@ -233,8 +235,12 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
         x, y = 0, 0
     
     gray = cv.cvtColor(roi, cv.COLOR_BGR2GRAY)
-    blurred = cv.GaussianBlur(gray, (5, 5), 0)
-    edges = cv.Canny(blurred, canny_low, canny_high)
+
+    blurred = cv.GaussianBlur(gray, (3, 3), 2)
+    #edges = cv.Canny(blurred, 80, 160, apertureSize=3)
+
+    #blurred = cv.GaussianBlur(gray, (5, 5), 0)
+    edges = cv.Canny(blurred, canny_low, canny_high,apertureSize=3)
     
     # dodano iz interneta za odebelitev robov/omogočanje lažjega izkanja zaprtih kontur
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(3,3))
@@ -356,7 +362,7 @@ def classify_color(hsv_values):
     elif hue < 255: return "pink"
     return "red"
 
-def sprememba_robov(image):
+def sprememba_robov(image):#transf matrika overkil? sort?
     global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
 
     repack_old_robovi_povp=[]
@@ -392,56 +398,81 @@ def sprememba_robov(image):
 
 
     robovi.append(local_list)
+
     if debug_robovi_kvadra==1:
         cv.imshow("Raw Hough Lines", line_img)  # Debug window
         cv.waitKey(0)
     num_za_povp_robov+=1
-    print(len(robovi))
     move_radius=5
-    max_frames_za_povp=5
+    max_frames_za_povp=3
+
     if num_za_povp_robov==max_frames_za_povp:
         num_za_povp_robov=0
-        robovi=[]
-        robovi_povp=[]
+        robovi_povp=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
         for st_zajema in range(len(robovi)):
             for r in range((len(robovi[st_zajema]))):
                 for r_l in range(len(robovi[st_zajema][r])):
                     for r_primerjava in range(len(robovi[st_zajema])):
                         if r_primerjava!=r:
                             for r_x in range(len(robovi[st_zajema][r_primerjava])):
-                                if (r_l==0 or r_l==2) and (r_x==0 or r_x==2):
+                                if (r_l==0 or r_l==2) and (r_x==0 or r_x==2) and r<len(robovi_povp):
                                     if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
                                         robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
-                                if (r_l==1 or r_l==3) and (r_x==1 or r_x==3):
+
+                                if (r_l==1 or r_l==3) and (r_x==1 or r_x==3) and r<len(robovi_povp):
                                     if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
                                         robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
-    
+
         for a in range(len(robovi_povp)):
             for b in range(len(robovi_povp[a])):
                 robovi_povp[a][b]/=max_frames_za_povp
+        
+        cifra=0
+        old_vsota=0
+        for vsota_1 in range(len(old_robovi_povp)):
+            for vsota_2 in range(len(old_robovi_povp[vsota_1])):
+                old_vsota+=old_robovi_povp[vsota_1][vsota_2]
+                cifra+=1
+        old_vsota=old_vsota/cifra
 
-        if len(old_robovi_povp)>0:
+        cifra=0
+        vsota=0
+        for vsota_1 in range(len(robovi_povp)):
+            for vsota_2 in range(len(robovi_povp[vsota_1])):
+                vsota+=robovi_povp[vsota_1][vsota_2]
+                cifra+=1
+        vsota=vsota/cifra
+
+        if len(old_robovi_povp)>0 and old_vsota>0:
             for re in range(len(old_robovi_povp)):
-                for re_index in range(len(old_robovi_povp[re])):
-                    repack_old_robovi_povp[re]=[old_robovi_povp[re][re_index+2*re_index],old_robovi_povp[re][re_index+2*re_index+1]]
+                for re_index in range(int(len(old_robovi_povp[re])/2)):
+                    repack_old_robovi_povp.append([old_robovi_povp[re][2*re_index],old_robovi_povp[re][2*re_index+1]])
+            repack_old_robovi_povp=repack_old_robovi_povp[0:3]
             repack_old_robovi_povp=np.array(repack_old_robovi_povp)
             repack_old_robovi_povp=np.float32(repack_old_robovi_povp)
 
-        for re in range(len(robovi_povp)):
-            for re_index in range(len(robovi_povp[re])):
-                repack_robovi_povp[re]=[robovi_povp[re][re_index+2*re_index],robovi_povp[re][re_index+2*re_index+1]]
-        repack_robovi_povp=np.array(repack_robovi_povp)
-        repack_robovi_povp=np.float32(repack_robovi_povp)
+        if len(robovi_povp)>0:
+            for re in range(len(robovi_povp)):
+                for re_index in range(int(len(robovi_povp[re])/2)):
+                    repack_robovi_povp.append([robovi_povp[re][2*re_index],robovi_povp[re][2*re_index+1]])
+            repack_robovi_povp=repack_robovi_povp[0:3]#točno 3 točke!
+            repack_robovi_povp=np.array(repack_robovi_povp)
+            repack_robovi_povp=np.float32(repack_robovi_povp)
 
-        print("stevilo elementov: "+str(len(robovi_povp))+" | "+str(len(old_robovi_povp)))
-        #vsaj 3 točke:
-        if len(robovi_povp)==len(old_robovi_povp) and len(old_robovi_povp)>0:
+        #print("stevilo elementov: "+str(len(robovi_povp))+" | "+str(len(old_robovi_povp)))
+        #print("podatkovni tip:" +str(type(repack_old_robovi_povp))+" | "+str(type(repack_robovi_povp)))
+        if len(robovi_povp)==len(old_robovi_povp) and len(old_robovi_povp)>0 and old_vsota>0 and vsota>0:
             transformacijska_matrika=cv.getAffineTransform(repack_old_robovi_povp,repack_robovi_povp)
 
-        old_robovi_povp=robovi_povp   
+        old_robovi_povp=robovi_povp
+        robovi=[] 
         if debug_robovi_kvadra==1:
             print("Transformacijska matrika: ")
             print(transformacijska_matrika)
+            print("Tocke robov prej:")
+            print(repack_old_robovi_povp)
+            print("tocke robov zdej:")
+            print(repack_robovi_povp)
             print("----------------------")      
         return transformacijska_matrika
     
@@ -918,6 +949,10 @@ if __name__ == "__main__":
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
 
+            #poiščemo transformacijski matriki obej kamer za preslikavo točk bowla in lukenj za pine
+            #na podlagi robov main boarda
+            tr_mat=sprememba_robov(slika)
+            tr_mat_2=sprememba_robov(slika_2)
 
             if setup==1 or setup==3:
 
@@ -930,27 +965,25 @@ if __name__ == "__main__":
                 canny_low = 50
                 canny_high = 150
 
-                #poiščemo transformacijski matriki obej kamer za preslikavo točk bowla in lukenj za pine
-                tr_mat=sprememba_robov(slika)
-                tr_mat_2=sprememba_robov(slika_2)
-                print("tr_mat:")
-                print(tr_mat)
-                print("tr_mat_2:")
-                print(tr_mat_2)
-                print("---")
+                """
                 #če dobimo vrnjeni transformacijski matriki ju oprabimo:
                 if tr_mat is not None:
                     if len(tr_mat)>0:
                         transformirani_centers=centers
-                        cv.warpAffine(np.float32(np.array(centers)),np.float32(np.array(transformirani_centers)),tr_mat,(slika_width,slika_height))
+                        print("1")
+                        print(np.shape(centers))
+                        transformirani_centers=cv.warpAffine(np.array(centers),tr_mat,np.shape(centers))
                         centers=transformirani_centers
                 
                 if tr_mat_2 is not None:
                     if len(tr_mat_2)>0:
                         transformirani_centers_2=centers_2
-                        cv.warpAffine(np.float32(np.array(centers_2)),np.float32(np.array(transformirani_centers_2)),tr_mat_2,(slika_2_width,slika_2_height))
+                        print("2")
+                        print(np.shape(centers))
+                        transformirani_centers_2=cv.warpAffine(np.array(centers_2),tr_mat_2,np.shape(centers_2))
                         centers_2=transformirani_centers_2
-
+                """
+                        
                 # Detect shapes within ROI
                 pin_in_bowl_2_centers,pin_centers,shapes, roi_rect, edges = detect_shapes(image_bgr, 
                                                     region_of_interest=roi,
