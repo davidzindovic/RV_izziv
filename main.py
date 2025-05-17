@@ -28,7 +28,7 @@ import json
 
 debug = 0
 debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
+debug_outlines=0            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
 debug_pins=0                # za podatke o najdenih pinih
 debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
 debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
@@ -36,14 +36,14 @@ debug_prikazi_vsak_frame=0  # zastavica za izris vsakega frame-a
 debug_akcije=0              # zastavica za izpis trenutnega stanja posodic v skledi in trenutne akcije
 debug_false_positive=0      # zastavica za pridobitev true positive tabele za spremembo dogodkov
 debug_anotacija=0           # zastavice za pridobitev primerjave generirane in referenčne anotacije
-debug_robovi_kvadra=0
+debug_robovi_kvadra=1
 
-path_do_videjev='C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
+path_do_videjev='C:\\Users\\david\\Desktop\\izziv main\\'
 
 ime_videja="64210323_video_7"
 ime_videja_2="64210323_video_3"
 
-pravilna_anotacija_path="C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\rocna_anotacija\\"
+pravilna_anotacija_path='C:\\Users\\david\\Desktop\\izziv main\\rocna_anotacija\\'
 
 ime_pravilna_anotacija="64210323_video_7"
 ime_pravilna_anotacija_2="64210323_video_3"
@@ -61,6 +61,12 @@ last_action_num=1
 
 # trenutni .json file:
 zgodovina=[]
+
+# robovi main boarda (za povprecenje robov vsakih 5 frameov):
+robovi=[]
+robovi_povp=[]
+old_robovi_povp=[]
+num_za_povp_robov=0
 
 # tabela za false positive (SW-real):
 false_positive_tabela=[[0,0], #T-P,F-P     T=True,F=False
@@ -351,24 +357,29 @@ def classify_color(hsv_values):
     return "red"
 
 def sprememba_robov(image):
+    global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
+
+    repack_old_robovi_povp=[]
+    repack_robovi_povp=[]
+    transformacijska_matrika=[]
+
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     
     blurred = cv.GaussianBlur(gray, (7, 7), 2)
-    edges = cv.Canny(blurred, 40, 120, apertureSize=3)
-    lines = cv.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=40, minLineLength=40, maxLineGap=15)
-    
-    
-    hor=[]
-    vert=[]
-
+    edges = cv.Canny(blurred, 80, 160, apertureSize=3)
+    lines = cv.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=80, minLineLength=50, maxLineGap=60)
 
     # Visualize raw lines (for debugging)
     line_img = np.zeros_like(image)
-    line_kvad = np.zeros_like(image)
+
+    local_list=[]
     for line in lines:
         x1, y1, x2, y2 = line[0]
         if x1>150 and x2<350 and y1>50 and y2<350:
             cv.line(line_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            local_list.append([x1,y1,x2,y2])
+
+            """
             if abs(x1-x2)<50 and abs(y1-y2)>100:
                 vert.append((x1,y1,x2,y2))
                 print("V angle: "+str(math.degrees(math.atan(abs((x2-x1)/(y2-y1))))))
@@ -377,12 +388,69 @@ def sprememba_robov(image):
                 hor.append((x1,y1,x2,y2))
                 print("H angle: "+str(math.degrees(math.atan(abs((y2-y1)/(x2-x1))))))
                 cv.line(line_kvad, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            """
+
+
+    robovi.append(local_list)
     if debug_robovi_kvadra==1:
         cv.imshow("Raw Hough Lines", line_img)  # Debug window
-        cv.imshow("Oblika", line_kvad)  # Debug window
+        cv.waitKey(0)
+    num_za_povp_robov+=1
+    print(len(robovi))
+    move_radius=5
+    max_frames_za_povp=5
+    if num_za_povp_robov==max_frames_za_povp:
+        num_za_povp_robov=0
+        robovi=[]
+        robovi_povp=[]
+        for st_zajema in range(len(robovi)):
+            for r in range((len(robovi[st_zajema]))):
+                for r_l in range(len(robovi[st_zajema][r])):
+                    for r_primerjava in range(len(robovi[st_zajema])):
+                        if r_primerjava!=r:
+                            for r_x in range(len(robovi[st_zajema][r_primerjava])):
+                                if (r_l==0 or r_l==2) and (r_x==0 or r_x==2):
+                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
+                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
+                                if (r_l==1 or r_l==3) and (r_x==1 or r_x==3):
+                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
+                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
     
-    #izračun transformacije:
-     
+        for a in range(len(robovi_povp)):
+            for b in range(len(robovi_povp[a])):
+                robovi_povp[a][b]/=max_frames_za_povp
+
+        if len(old_robovi_povp)>0:
+            for re in range(len(old_robovi_povp)):
+                for re_index in range(len(old_robovi_povp[re])):
+                    repack_old_robovi_povp[re]=[old_robovi_povp[re][re_index+2*re_index],old_robovi_povp[re][re_index+2*re_index+1]]
+            repack_old_robovi_povp=np.array(repack_old_robovi_povp)
+            repack_old_robovi_povp=np.float32(repack_old_robovi_povp)
+
+        for re in range(len(robovi_povp)):
+            for re_index in range(len(robovi_povp[re])):
+                repack_robovi_povp[re]=[robovi_povp[re][re_index+2*re_index],robovi_povp[re][re_index+2*re_index+1]]
+        repack_robovi_povp=np.array(repack_robovi_povp)
+        repack_robovi_povp=np.float32(repack_robovi_povp)
+
+        print("stevilo elementov: "+str(len(robovi_povp))+" | "+str(len(old_robovi_povp)))
+        #vsaj 3 točke:
+        if len(robovi_povp)==len(old_robovi_povp) and len(old_robovi_povp)>0:
+            transformacijska_matrika=cv.getAffineTransform(repack_old_robovi_povp,repack_robovi_povp)
+
+        old_robovi_povp=robovi_povp   
+        if debug_robovi_kvadra==1:
+            print("Transformacijska matrika: ")
+            print(transformacijska_matrika)
+            print("----------------------")      
+        return transformacijska_matrika
+    
+    old_robovi_povp=robovi_povp
+
+
+
+    return None
+
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
@@ -821,8 +889,8 @@ if __name__ == "__main__":
         slika_2 = get_video_frame(ime_videja_2, frame+1)
         
         if slika is not None and slika_2 is not None:
-            slika_height, s_width = slika.shape[:2]
-            slika_2_height, s_width_2 = slika_2.shape[:2]
+            slika_height, slika_width = slika.shape[:2]
+            slika_2_height, slika_2_width = slika_2.shape[:2]
         
         if slika is None:
             if debug_video==1:
@@ -845,6 +913,8 @@ if __name__ == "__main__":
             if setup==0 or setup==2:
                 centers, threshold_img, edge_img = detect_bright_objects(slika)
                 centers_2, threshold_img_2, edge_img_2 = detect_bright_objects(slika_2)
+
+
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
 
@@ -859,6 +929,27 @@ if __name__ == "__main__":
                 max_area = 3000
                 canny_low = 50
                 canny_high = 150
+
+                #poiščemo transformacijski matriki obej kamer za preslikavo točk bowla in lukenj za pine
+                tr_mat=sprememba_robov(slika)
+                tr_mat_2=sprememba_robov(slika_2)
+                print("tr_mat:")
+                print(tr_mat)
+                print("tr_mat_2:")
+                print(tr_mat_2)
+                print("---")
+                #če dobimo vrnjeni transformacijski matriki ju oprabimo:
+                if tr_mat is not None:
+                    if len(tr_mat)>0:
+                        transformirani_centers=centers
+                        cv.warpAffine(np.float32(np.array(centers)),np.float32(np.array(transformirani_centers)),tr_mat,(slika_width,slika_height))
+                        centers=transformirani_centers
+                
+                if tr_mat_2 is not None:
+                    if len(tr_mat_2)>0:
+                        transformirani_centers_2=centers_2
+                        cv.warpAffine(np.float32(np.array(centers_2)),np.float32(np.array(transformirani_centers_2)),tr_mat_2,(slika_2_width,slika_2_height))
+                        centers_2=transformirani_centers_2
 
                 # Detect shapes within ROI
                 pin_in_bowl_2_centers,pin_centers,shapes, roi_rect, edges = detect_shapes(image_bgr, 
