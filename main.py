@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import math
 import json
+import config_izziv_main
 
 #conf file naj vsebuje:
 #ime_videja1,ime_videja2
@@ -18,39 +19,41 @@ import json
 
 #manjka logika na koncu da če so vsi pini pobrani da prazna roka pomeni zadnji action -> od ___ do zadnji frame mozen
 
-#možna izboljšava -> samodejen ROI
-#                 -> izboljšava parametrov za pine v 3x3 gridu
-
 # to do: centr bowla pinov fixed razdalja oz. sprotno določanje lokacije ciljnih lukenj
-# to do: preveri logiko
 
-#to do popravek pri logiki: pri odvzemanju naj ne gleda števila pinov v bowlu (fali) naj gleda raje 9-št odloženih
-#pri logiki dodati uteži za odločanje?
-#-------------ZA UPORABNIKA---------------------------
+#to do popravek pri logiki: 
+#1. kalibracija (koliko pinov je v bowlu in kje so)
+#2. ko ne vidim pinov na znanih pozicijah->pobiranje
+#3. vidim vsaj 7 pinov (n_pred_pobiranjem-1-1) in so v bowlu (glede na radij) -> prenašanje
+#4. dobim info da je en pin odložen v 3x3 grid->konec odlaganja -> skalibriram bowl za ref točke spet
+#5. ponvaljaj korake 2-4
 
-debug = 0
-debug_prikaz=0              # za prikaz framea z zamudo 1 in za prikaz uvodnih vizualizacij (lučke, polovice slike ipd.)
-debug_outlines=1            # sam za prikaz obrob in shapeov ko najde nekaj (nov pin v 3x3 gridu)
-debug_pins=0                # za podatke o najdenih pinih
-debug_sprotno_stanje=0      # za izpis/izris sprotnega stanja pinov
-debug_video=0               # za izpis podatkov o videju (npr. ko ne more dobiti slike)
-debug_prikazi_vsak_frame=0  # zastavica za izris vsakega frame-a
-debug_akcije=0              # zastavica za izpis trenutnega stanja posodic v skledi in trenutne akcije
-debug_false_positive=0      # zastavica za pridobitev true positive tabele za spremembo dogodkov
-debug_anotacija=0           # zastavica za pridobitev primerjave generirane in referenčne anotacije
-debug_robovi_kvadra=0       # zastavica za izris in izpis robov main boarda
+#todo: uredi main kodo da pin v bowlu dobi iz nove funkcije (NUJNO), uredu logiko po zgornjem napisu (NUJNO), 
+#      zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
 
-path_do_videjev='C:\\Users\\david\\Desktop\\izziv main\\'
+#----------------iz configa--------------
+debug = config_izziv_main.debug
+debug_prikaz=config_izziv_main.debug_prikaz           
+debug_outlines=config_izziv_main.debug_outlines            
+debug_pins=config_izziv_main.debug_pins
+debug_sprotno_stanje=config_izziv_main.debug_sprotno_stanje
+debug_video=config_izziv_main.debug_video
+debug_prikazi_vsak_frame=config_izziv_main.debug_prikazi_vsak_frame
+debug_akcije=config_izziv_main.debug_akcije
+debug_false_positive=config_izziv_main.debug_false_positive
+debug_anotacija=config_izziv_main.debug_anotacija
+debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
 
-ime_videja="64210323_video_7"
-ime_videja_2="64210323_video_3"
+path_do_videjev=config_izziv_main.path_do_videjev
 
-pravilna_anotacija_path='C:\\Users\\david\\Desktop\\izziv main\\rocna_anotacija\\'
+ime_videja=config_izziv_main.ime_videja
+ime_videja_2=config_izziv_main.ime_videja_2
 
-ime_pravilna_anotacija="64210323_video_7"
-ime_pravilna_anotacija_2="64210323_video_3"
+pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
 
-#-----------------------------------------------------------------
+ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
+ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
+#----------------------------------------
 
 # seznam možnih stanj (informativno, neuporabljeno)
 stanja=["prijemanje_pina","prenos_pina","odlaganje_pina","prazna_roka"]
@@ -83,6 +86,9 @@ num_true_negative=0
 # spremenljivke za število pinov:
 num_pins_verified=0
 num_pins_hypo=0
+
+# spremenljivka za število pinov v bowlu na podlagi števila postavljeni pinov:
+num_pin_in_bowl=0
 
 # spremeljivka za shranjevanje zaključnega frame-a zadnje "akcije",
 # saj se start/stop frame (številki) ponastavita po koncu akcije
@@ -242,7 +248,7 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     #blurred = cv.GaussianBlur(gray, (5, 5), 0)
     edges = cv.Canny(blurred, canny_low, canny_high,apertureSize=3)
     
-    # dodano iz interneta za odebelitev robov/omogočanje lažjega izkanja zaprtih kontur
+    # dodano iz interneta za odebelitev robov/omogočanje lažjega iskanja zaprtih kontur
     kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE,(3,3))
     dilated = cv.dilate(edges, kernel)
 
@@ -319,15 +325,14 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             shapes['pins'].append(shape_info)
             pins_centers.append([abs_cx,abs_cy])
             if debug_pins:
-                print("pin: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter))
+                print("pin: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter)+"|"+str(color_name))
         
                 # za kamero ki ima pin bowl bližje:
         elif (100<area<280 and 6.5>aspect_ratio>4.1 and 40<perimeter<120 and radius<22 and circularity<0.4 and cy>(180)):#20<area<600 and radius>8 170<area<800 and and 50<perimeter<190
             shapes['pin_in_bowl_2'].append(shape_info)
             pins_in_bowl_2_centers.append([abs_cx,abs_cy])
             if debug_pins:
-                print("pin in bowl 2: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter))
-
+                print("pin in bowl 2: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter)+"|"+str(color_name))
 
         """
         elif (170< area < 300 and 1<aspect_ratio<3):
@@ -336,12 +341,8 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             if debug_pins:
                 print("pin in bowl: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter)+"|"+str(rect))
         """
-                
-
-
     if debug_pins:
         print("")
-
 
     return pins_in_bowl_2_centers,pins_centers,shapes, (x, y, w, h) if region_of_interest else None, edges
 
@@ -362,6 +363,8 @@ def classify_color(hsv_values):
     elif hue < 255: return "pink"
     return "red"
 
+# Funkcija za iskanje transformacijske matrike potrebne zaradi
+# premika main boarda (za preslikavo točk 3x3 grida)
 def sprememba_robov(image):#transf matrika overkil? sort?
     global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
 
@@ -478,10 +481,81 @@ def sprememba_robov(image):#transf matrika overkil? sort?
     
     old_robovi_povp=robovi_povp
 
-
-
     return None
 
+# Funkcija za iskanje pinov v bowlu
+def detect_dark_objects(image):
+    # Read the image
+    img = image
+    if img is None:
+        print("Error: Could not read the image.")
+        return
+    
+    # Define ROI (x, y, width, height)
+    roi = (150, 50, 200, 400)
+    x, y, w, h = roi
+    
+    # Extract ROI from the image
+    roi_img = img[y:y+h, x:x+w].copy()
+    
+    # Convert ROI to grayscale
+    gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
+
+    # Enhanced contrast for dark regions
+    alpha = 0.5  # Contrast control (1.0-3.0)
+    beta = 50    # Brightness control (-100 to 100)
+    enhanced = cv.convertScaleAbs(gray, alpha=alpha, beta=beta)
+    
+    # Apply adaptive thresholding for better edge detection
+    thresh = cv.adaptiveThreshold(enhanced, 255, #!!!!!!!!!!!
+                                 cv.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                 cv.THRESH_BINARY_INV, 11, 2)
+    
+
+    # Combine with Canny edge detection
+    blurred = cv.GaussianBlur(enhanced, (9, 9), 0)
+    edges = cv.Canny(blurred, 40, 100)
+    combined_edges = cv.bitwise_or(thresh, edges)
+
+    # Find contours in ROI
+    contours, _ = cv.findContours(combined_edges, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    
+    pravilne_konture=[]
+
+    # Process each contour
+    object_counter = 0
+    obj_display = img.copy()
+    for contour in contours:
+        # Calculate contour area and filter
+        area = cv.contourArea(contour)
+        if area < 60 or area > 300:
+            continue
+
+        # Create a mask for the current contour
+        mask = np.zeros_like(gray)
+        cv.drawContours(mask, [contour], -1, 255, -1)
+        
+        # Calculate mean pixel value within the contour
+        mean_val = cv.mean(gray, mask=mask)[0]
+        
+        if mean_val < 140:
+            object_counter += 1
+            # Create a copy of the original image for this object
+            
+            # Translate contour coordinates back to original image
+            translated_contour = contour + np.array([x, y])
+            
+            pravilne_konture.append(translated_contour)
+
+            if debug_pins==1:
+                # Draw the contour on the image (green)
+                cv.drawContours(obj_display, [translated_contour], -1, (0, 255, 0), 2)
+    
+    if debug_pins==1:
+        cv.waitKey(0)
+        cv.destroyAllWindows()
+
+    return pravilne_konture
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
@@ -675,6 +749,78 @@ def create_annotation_json(filename, annotations_array):
     
     return json_filename
 
+def pini_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
+
+    # sortiranje sredinskih točk lukenj za pine:
+    centers_spodaj_temp.sort()
+    centers_zgoraj_temp.sort()
+    # opozorilo: .sort v 2D seznamu sortira glede na velikost prve koordinate v paru
+
+    centers_spodaj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
+    centers_zgoraj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
+
+    s_max_spodaj=0          # največja y koordinata točk sredin lukenj (3x3 grid-a)
+    s_min_spodaj=100000     # najmanjša y koordinata točk sredin lukenj
+    s_mid_spodaj=0          # srednja y koordinata točk sredin lukenj
+
+    # določanje primerne velikosti s_max,s_min,s_mid:
+    for s in range(len(centers_spodaj_temp)):
+        if centers_spodaj_temp[s][1]>s_max_spodaj:
+            s_max_spodaj=centers_spodaj_temp[s][1]
+        if centers_spodaj_temp[s][1]<s_min_spodaj:
+            s_min_spodaj=centers_spodaj_temp[s][1]
+        if (s_max_spodaj-5)>centers_spodaj_temp[s][1]>(s_min_spodaj+5):
+            s_mid_spodaj=centers_spodaj_temp[s][1]
+    # opozorilo: bi lahko bilo izven main loopa?
+
+    s_max_zgoraj=0
+    s_min_zgoraj=100000
+    s_mid_zgoraj=0
+
+    for s in range(len(centers_zgoraj_temp)):
+        if centers_zgoraj_temp[s][1]>s_max_zgoraj:
+            s_max_zgoraj=centers_zgoraj_temp[s][1]
+        if centers_zgoraj_temp[s][1]<s_min_zgoraj:
+            s_min_zgoraj=centers_zgoraj_temp[s][1]
+        if (s_max_zgoraj-5)>centers_zgoraj_temp[s][1]>(s_min_zgoraj+5):
+            s_mid_zgoraj=centers_zgoraj_temp[s][1]
+
+    # spremenljivke za indexiranje
+    top=0
+    mid=0
+    bottom=0 
+
+    # določanje razporeditve točke (primerno glede na pozicijo kamere)
+    for ss in range(len(centers_spodaj_temp)):
+
+        if (s_max_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_max_spodaj-5):
+            centers_spodaj_final[bottom+6]=centers_spodaj_temp[ss] # zadnji 3je
+            bottom=bottom+1
+        elif (s_mid_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_mid_spodaj-5):
+            centers_spodaj_final[mid+3]=centers_spodaj_temp[ss] # srednji 3je
+            mid=mid+1
+        elif (s_min_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_min_spodaj-5):
+            centers_spodaj_final[top+0]=centers_spodaj_temp[ss] # prvi 3je
+            top=top+1
+
+    # spremenljivke za indexiranje
+    top=0
+    mid=0
+    bottom=0 
+
+    for ss in range(len(centers_zgoraj_temp)):
+        
+        if (s_max_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_max_zgoraj-5):
+            centers_zgoraj_final[2-bottom]=centers_zgoraj_temp[ss] # zadnji 3je
+            bottom=bottom+1
+        elif (s_mid_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_mid_zgoraj-5):
+            centers_zgoraj_final[5-mid]=centers_zgoraj_temp[ss] # srednji 3je
+            mid=mid+1
+        elif (s_min_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_min_zgoraj-5):
+            centers_zgoraj_final[8-top]=centers_zgoraj_temp[ss] # prvi 3je
+            top=top+1
+    
+    return centers_spodaj_final,centers_zgoraj_final,
 
 def primerjava_anotacij(fresh_json,correct_json):
     # Opening JSON file
@@ -842,19 +988,7 @@ if __name__ == "__main__":
 
     x=0               # oporna spremenljivka za bolj berljivo kodo
     y=1               # oporna spremenljivka za bolj berljivo kodo
-
-    # tabela vstavljenih pinov (3x3 grid) gledano iz kamere,
-    # ki ima luknje za vstavljanje na zgornji polovici slike
-    inserted_pins_zgoraj=[[0,0,0],
-                          [0,0,0],
-                          [0,0,0]]
-                   
-    # tabela vstavljenih pinov (3x3 grid) gledano iz kamere,
-    # ki ima luknje za vstavljanje na spodnji polovici slike
-    inserted_pins_spodaj=[[0,0,0],
-                          [0,0,0],
-                          [0,0,0]]
-                          
+ 
     frame_cnt=0
     
     # tabeli za shranjevanje zadnjega stanja tabel vstavljenih pinov:
@@ -909,8 +1043,6 @@ if __name__ == "__main__":
     action_end_frame=0
 
 
-
-
 # zanka za sprehod čez vse slike videja:
     #for frame in range(550):
     while video!="stop":
@@ -944,7 +1076,6 @@ if __name__ == "__main__":
             if setup==0 or setup==2:
                 centers, threshold_img, edge_img = detect_bright_objects(slika)
                 centers_2, threshold_img_2, edge_img_2 = detect_bright_objects(slika_2)
-
 
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
@@ -1005,7 +1136,6 @@ if __name__ == "__main__":
                     stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
                     stran_lukenj_2 = detect_object_position_bias(image_bgr_2, shapes_2, show_result=True)
 
-                
                     if stran_lukenj!='none'or stran_lukenj_2!='none':
                         setup=3
 
@@ -1017,7 +1147,6 @@ if __name__ == "__main__":
                             stran_lukenj="zgoraj"
                         elif stran_lukenj_2=="zgoraj":
                             stran_lukenj="spodaj"
-
 
                 if setup==3:
                     if prikazi_vmesne_korake==1 or debug_outlines==1 or debug_prikazi_vsak_frame==1:
@@ -1046,7 +1175,8 @@ if __name__ == "__main__":
 
                     prikazi_vmesne_korake=0
 
-
+                    #-------------------------DEL kode za določanje stanja v 3x3 gridu------------------------
+                    
                     # na podlagi kamere odločimo katere točke za pine uporabiti oz. katera kamera gleda odložene pine
                     # kamera, ki ima bowl blizje gleda vse shapes notri
                     if stran_lukenj=="spodaj":
@@ -1062,74 +1192,8 @@ if __name__ == "__main__":
                         centers_zgoraj_temp=centers
                         posodica_pod_roko=pin_in_bowl_2_centers
 
-                    # sortiranje sredinskih točk lukenj za pine:
-                    centers_spodaj_temp.sort()
-                    centers_zgoraj_temp.sort()
-                    # opozorilo: .sort v 2D seznamu sortira glede na velikost prve koordinate v paru
-
-                    centers_spodaj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
-                    centers_zgoraj_final=[[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0],[0,0]]
-                    
-                    s_max_spodaj=0          # največja y koordinata točk sredin lukenj (3x3 grid-a)
-                    s_min_spodaj=100000     # najmanjša y koordinata točk sredin lukenj
-                    s_mid_spodaj=0          # srednja y koordinata točk sredin lukenj
-                    
-                    # določanje primerne velikosti s_max,s_min,s_mid:
-                    for s in range(len(centers_spodaj_temp)):
-                        if centers_spodaj_temp[s][1]>s_max_spodaj:
-                            s_max_spodaj=centers_spodaj_temp[s][1]
-                        if centers_spodaj_temp[s][1]<s_min_spodaj:
-                            s_min_spodaj=centers_spodaj_temp[s][1]
-                        if (s_max_spodaj-5)>centers_spodaj_temp[s][1]>(s_min_spodaj+5):
-                            s_mid_spodaj=centers_spodaj_temp[s][1]
-                    # opozorilo: bi lahko bilo izven main loopa?
-
-                    s_max_zgoraj=0
-                    s_min_zgoraj=100000
-                    s_mid_zgoraj=0
-                    
-                    for s in range(len(centers_zgoraj_temp)):
-                        if centers_zgoraj_temp[s][1]>s_max_zgoraj:
-                            s_max_zgoraj=centers_zgoraj_temp[s][1]
-                        if centers_zgoraj_temp[s][1]<s_min_zgoraj:
-                            s_min_zgoraj=centers_zgoraj_temp[s][1]
-                        if (s_max_zgoraj-5)>centers_zgoraj_temp[s][1]>(s_min_zgoraj+5):
-                            s_mid_zgoraj=centers_zgoraj_temp[s][1]
-
-                    # spremenljivke za indexiranje
-                    top=0
-                    mid=0
-                    bottom=0 
-
-                    # določanje razporeditve točke (primerno glede na pozicijo kamere)
-                    for ss in range(len(centers_spodaj_temp)):
-
-                        if (s_max_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_max_spodaj-5):
-                            centers_spodaj_final[bottom+6]=centers_spodaj_temp[ss] # zadnji 3je
-                            bottom=bottom+1
-                        elif (s_mid_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_mid_spodaj-5):
-                            centers_spodaj_final[mid+3]=centers_spodaj_temp[ss] # srednji 3je
-                            mid=mid+1
-                        elif (s_min_spodaj+5)>(centers_spodaj_temp[ss][1])>(s_min_spodaj-5):
-                            centers_spodaj_final[top+0]=centers_spodaj_temp[ss] # prvi 3je
-                            top=top+1
-
-                    # spremenljivke za indexiranje
-                    top=0
-                    mid=0
-                    bottom=0 
-                    
-                    for ss in range(len(centers_zgoraj_temp)):
-                        
-                        if (s_max_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_max_zgoraj-5):
-                            centers_zgoraj_final[2-bottom]=centers_zgoraj_temp[ss] # zadnji 3je
-                            bottom=bottom+1
-                        elif (s_mid_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_mid_zgoraj-5):
-                            centers_zgoraj_final[5-mid]=centers_zgoraj_temp[ss] # srednji 3je
-                            mid=mid+1
-                        elif (s_min_zgoraj+5)>(centers_zgoraj_temp[ss][1])>(s_min_zgoraj-5):
-                            centers_zgoraj_final[8-top]=centers_zgoraj_temp[ss] # prvi 3je
-                            top=top+1
+                    centers_spodaj_final,centers_zgoraj_final=pini_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp)
+                    #-------------------------------------------------------------------------------
 
                     # procesiranje slik izvedemo le, če je setup dokončno opravljen:
                     if setup==3:
@@ -1160,13 +1224,10 @@ if __name__ == "__main__":
                                     if inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
                                         inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]=1
                                 
-                        
-
                         sprememba=0
                         for i in range(9):
                             if inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]>old_inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]:
                                 sprememba=1
-
 
                         if action=="vstavljanje":
                             pin_count=0
@@ -1180,8 +1241,7 @@ if __name__ == "__main__":
                             elif inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==0 and action=="odvzemanje":
                                 pin_count=pin_count-1
                         num_pins_verified=pin_count
-                        
-
+                        s
                         if action=="odvzemanje" and pin_count>odvzemanje_tracker_max:
                             odvzemanje_flag_once=odvzemanje_flag_once+1
                             if odvzemanje_flag_once>2:
