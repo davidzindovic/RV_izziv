@@ -28,7 +28,7 @@ import config_izziv_main
 #4. dobim info da je en pin odložen v 3x3 grid->konec odlaganja -> skalibriram bowl za ref točke spet
 #5. ponvaljaj korake 2-4
 
-#todo: uredi main kodo da pin v bowlu dobi iz nove funkcije (NUJNO), uredu logiko po zgornjem napisu (NUJNO), 
+#todo: uredi logiko po zgornjem napisu (NUJNO), uredi zaznavanje pinov v bowlu (NUJNO) 
 #      zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
 
 #----------------iz configa--------------
@@ -43,6 +43,7 @@ debug_akcije=config_izziv_main.debug_akcije
 debug_false_positive=config_izziv_main.debug_false_positive
 debug_anotacija=config_izziv_main.debug_anotacija
 debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
+debug_bowl=config_izziv_main.debug_bowl
 
 path_do_videjev=config_izziv_main.path_do_videjev
 
@@ -96,6 +97,15 @@ last_action_frame=0
 
 prikazi_vmesne_korake=0 # spremeljivka za omogočanje prikaza vmesnih korakov/stanj
                         # slike. Sprememljivko spreminja program
+
+# zastavica za razporeditev lukenj v 3x3 mrežo
+razporedi_centre_lukenj=True
+
+#zastavica, ki se proži ob premiku ali rotaciji plošče
+premaknjen_board=False 
+
+# spremenljivka, ki hrani podatek o središču bowla
+center_bowla_blizje_kameri=[]
 
 slika_height=0
 slika_2_height=0
@@ -266,8 +276,8 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     }
     
     pins_centers=[]
-    pins_in_bowl_centers=[]
-    pins_in_bowl_2_centers=[]
+    #pins_in_bowl_centers=[]
+    #pins_in_bowl_2_centers=[]
     for contour in contours:
         area = cv.contourArea(contour)
         if area < min_area or area > max_area:
@@ -326,14 +336,14 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
             pins_centers.append([abs_cx,abs_cy])
             if debug_pins:
                 print("pin: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter)+"|"+str(color_name))
-        
+        """
                 # za kamero ki ima pin bowl bližje:
         elif (100<area<280 and 6.5>aspect_ratio>4.1 and 40<perimeter<120 and radius<22 and circularity<0.4 and cy>(180)):#20<area<600 and radius>8 170<area<800 and and 50<perimeter<190
             shapes['pin_in_bowl_2'].append(shape_info)
             pins_in_bowl_2_centers.append([abs_cx,abs_cy])
             if debug_pins:
                 print("pin in bowl 2: "+str(aspect_ratio)+"|"+str(area)+"|"+str(circularity)+"|"+str(radius)+"|"+str(perimeter)+"|"+str(color_name))
-
+        """
         """
         elif (170< area < 300 and 1<aspect_ratio<3):
             shapes['pin_in_bowl'].append(shape_info)
@@ -344,7 +354,7 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     if debug_pins:
         print("")
 
-    return pins_in_bowl_2_centers,pins_centers,shapes, (x, y, w, h) if region_of_interest else None, edges
+    return pins_centers,shapes, (x, y, w, h) if region_of_interest else None, edges
 
 # funkcija za določanje barve pina:
 def classify_color(hsv_values):
@@ -487,6 +497,7 @@ def sprememba_robov(image):#transf matrika overkil? sort?
 def detect_dark_objects(image):
     # Read the image
     img = image
+    slikaa=image.copy()
     if img is None:
         print("Error: Could not read the image.")
         return
@@ -500,62 +511,137 @@ def detect_dark_objects(image):
     
     # Convert ROI to grayscale
     gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
-
+    
     # Enhanced contrast for dark regions
+    #alpha = 2  # Contrast control (1.0-3.0)
+    #beta = -100    # Brightness control (-100 to 100)
     alpha = 0.5  # Contrast control (1.0-3.0)
     beta = 50    # Brightness control (-100 to 100)
     enhanced = cv.convertScaleAbs(gray, alpha=alpha, beta=beta)
-    
-    # Apply adaptive thresholding for better edge detection
-    thresh = cv.adaptiveThreshold(enhanced, 255, #!!!!!!!!!!!
-                                 cv.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                 cv.THRESH_BINARY_INV, 11, 2)
-    
+    #enhanced=cv.add(gray,150)
+
+
+    #histogram matching:
+    #equ = cv.equalizeHist(gray)
+    #res = np.hstack((gray,equ)) #stacking images side-by-side
+    #cv.imshow('hist',res)
+
+    #CLAHE:
+    #clahe = cv.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    #cl1 = clahe.apply(gray)
+    #cv.imshow("clahe",cl1)
+    #enhanced=cl1
 
     # Combine with Canny edge detection
-    blurred = cv.GaussianBlur(enhanced, (9, 9), 0)
+    blurred = cv.GaussianBlur(enhanced, (5, 5), 0)
+    #blurred=cv.medianBlur(enhanced,3)
+
+    # Apply adaptive thresholding for better edge detection
+    thresh = cv.adaptiveThreshold(blurred, 255,
+                                 cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv.THRESH_BINARY_INV, 11, 2)
+
+    #laplace:
+    #s=cv.Laplacian(blurred,cv.CV_64F)
+    #cv.imshow("sobel",s)
+
+    #_,thresh=cv.threshold(enhanced,120,255,cv.THRESH_BINARY)
+    #thresh=cv.bitwise_not(thresh)
+    #cv.imshow("t1",thresh)
+    #_,thresh=cv.threshold(enhanced,200,255,cv.THRESH_BINARY_INV)
+    #cv.imshow("t2",thresh)
+
+    """
+    # sobel
+    #s=cv.Sobel(enhanced,cv.CV_8U,1,0,ksize=3)
+    sx = cv.Sobel(thresh,cv.CV_32F,1,0)
+    sy = cv.Sobel(thresh,cv.CV_32F,0,1)
+    m = cv.magnitude(sx,sy)
+    m = cv.normalize(m,None,0.,255.,cv.NORM_MINMAX,cv.CV_8U)
+    #m = cv.ximgproc.thinning(m,None,cv.ximgproc.THINNING_GUOHALL)
+    """
+    
     edges = cv.Canny(blurred, 40, 100)
     combined_edges = cv.bitwise_or(thresh, edges)
+    #combined_edges=edges
+
+    #kernel = cv.getStructuringElement(cv.MORPH_CROSS,(5,5))
+    #dilated = cv.dilate(combined_edges, kernel)
 
     # Find contours in ROI
-    contours, _ = cv.findContours(combined_edges, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv.findContours(combined_edges, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
     
-    pravilne_konture=[]
+    #translated_canny_contours=[]
+    #for can in contours_canny:
+    #    translated_canny_contours.append(can + np.array([x, y]))
 
+    """
+    #iskanje glede na temne piksle:
+    px=0
+    for x in range(70,200-60):
+        for y in range(200,270):
+            px+=thresh[y][x]==0
+    print(px)
+    print("ZDEJ:"+str(px/(1200/9)))
+    """
+
+    centri_pravilne_konture=[]
+    if debug_bowl==1:
+        cv.imshow("Edges",combined_edges)
+        cv.imshow("Blurred",blurred)
     # Process each contour
     object_counter = 0
     obj_display = img.copy()
+    
+    #print("----------")
     for contour in contours:
         # Calculate contour area and filter
         area = cv.contourArea(contour)
-        if area < 60 or area > 300:
-            continue
 
         # Create a mask for the current contour
         mask = np.zeros_like(gray)
         cv.drawContours(mask, [contour], -1, 255, -1)
-        
+
         # Calculate mean pixel value within the contour
         mean_val = cv.mean(gray, mask=mask)[0]
+
+        translated_contour = contour + np.array([x, y])
+        M = cv.moments(translated_contour)
+        cx=0
+        cy=0
+        if M['m00'] != 0:
+            cx = int(M['m10']/M['m00'])
+            cy = int(M['m01']/M['m00'])
+
+        #print(mean_val,area,cx,cy)
+
+        if area < 40 or area > 500:
+            continue   
         
-        if mean_val < 140:
+        if mean_val < 200:
             object_counter += 1
             # Create a copy of the original image for this object
             
             # Translate contour coordinates back to original image
-            translated_contour = contour + np.array([x, y])
-            
-            pravilne_konture.append(translated_contour)
 
-            if debug_pins==1:
+            centri_pravilne_konture.append([cx,cy])
+
+            if debug_bowl==1:
+                cv.circle(obj_display, (cx, cy), 3, (0, 0, 255), -1)
+
+            if debug_pins==1 or prikazi_vmesne_korake==1 or debug_outlines==1 or debug_prikazi_vsak_frame==1 or debug_bowl==1:
                 # Draw the contour on the image (green)
-                cv.drawContours(obj_display, [translated_contour], -1, (0, 255, 0), 2)
-    
+                cv.drawContours(obj_display, [translated_contour], -1, (0, 255, 0), 1)
+
+    if debug_bowl==1:   
+        #cv.drawContours(slikaa, translated_contour, -1, (0,0,255), 1)
+        cv.imshow("v bowlu",obj_display)
+
     if debug_pins==1:
         cv.waitKey(0)
         cv.destroyAllWindows()
 
-    return pravilne_konture
+    return centri_pravilne_konture
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
@@ -749,7 +835,7 @@ def create_annotation_json(filename, annotations_array):
     
     return json_filename
 
-def pini_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
+def luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
 
     # sortiranje sredinskih točk lukenj za pine:
     centers_spodaj_temp.sort()
@@ -991,6 +1077,9 @@ if __name__ == "__main__":
  
     frame_cnt=0
     
+    inserted_pins_zgoraj=[[0,0,0],[0,0,0],[0,0,0]]
+    inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
+
     # tabeli za shranjevanje zadnjega stanja tabel vstavljenih pinov:
     old_inserted_pins_zgoraj=[[0,0,0],[0,0,0],[0,0,0]]
     old_inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
@@ -1038,6 +1127,8 @@ if __name__ == "__main__":
 
     bowl_cnt=0
 
+    radij_bowla=0
+
     action_assigned=False
     action_start_frame=0
     action_end_frame=0
@@ -1051,9 +1142,14 @@ if __name__ == "__main__":
         slika = get_video_frame(ime_videja, frame+1)
         slika_2 = get_video_frame(ime_videja_2, frame+1)
         
+        if debug_prikazi_vsak_frame==1:
+            cv.imshow(slika)
+            cv.imshow(slika_2)
+
         if slika is not None and slika_2 is not None:
             slika_height, slika_width = slika.shape[:2]
             slika_2_height, slika_2_width = slika_2.shape[:2]
+            slikaaa=slika_2.copy()
         
         if slika is None:
             if debug_video==1:
@@ -1079,6 +1175,9 @@ if __name__ == "__main__":
 
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
+
+            pin_in_bowl_2_centers=detect_dark_objects(slika)
+            pin_in_bowl_2_centers_2=detect_dark_objects(slika_2)
 
             #poiščemo transformacijski matriki obej kamer za preslikavo točk bowla in lukenj za pine
             #na podlagi robov main boarda
@@ -1116,19 +1215,20 @@ if __name__ == "__main__":
                 """
                         
                 # Detect shapes within ROI
-                pin_in_bowl_2_centers,pin_centers,shapes, roi_rect, edges = detect_shapes(image_bgr, 
+                pin_centers,shapes, roi_rect, edges = detect_shapes(image_bgr, 
                                                     region_of_interest=roi,
                                                     min_area=min_area,
                                                     max_area=max_area,
                                                     canny_low=canny_low,
                                                     canny_high=canny_high)
                 
-                pin_in_bowl_2_centers_2,pin_centers_2,shapes_2, roi_rect_2, edges_2 = detect_shapes(image_bgr_2, 
+                pin_centers_2,shapes_2, roi_rect_2, edges_2 = detect_shapes(image_bgr_2, 
                                                     region_of_interest=roi,
                                                     min_area=min_area,
                                                     max_area=max_area,
                                                     canny_low=canny_low,
                                                     canny_high=canny_high)
+
 
                 # Ko najdemo središča lukenj, lahko določimo kje ima
                 # katera kamera ima 3x3 grid na spodnji/zgornji strani
@@ -1148,8 +1248,9 @@ if __name__ == "__main__":
                         elif stran_lukenj_2=="zgoraj":
                             stran_lukenj="spodaj"
 
+                # procesiranje slik izvedemo le, če je setup dokončno opravljen:
                 if setup==3:
-                    if prikazi_vmesne_korake==1 or debug_outlines==1 or debug_prikazi_vsak_frame==1:
+                    if prikazi_vmesne_korake==1 or debug_outlines==1:
                         # Visualize
                         result = visualize_detection(image_bgr, shapes, roi)
                         result_2 = visualize_detection(image_bgr_2, shapes_2, roi)
@@ -1170,9 +1271,6 @@ if __name__ == "__main__":
                         cv.imshow("Edges | Frame: "+str(frame) +" - cam2", edges_2)
                         cv.imshow("Shapes | Frame: "+str(frame)+" - cam2", result_2)
 
-                        cv.waitKey(0)
-                        cv.destroyAllWindows()
-
                     prikazi_vmesne_korake=0
 
                     #-------------------------DEL kode za določanje stanja v 3x3 gridu------------------------
@@ -1192,148 +1290,301 @@ if __name__ == "__main__":
                         centers_zgoraj_temp=centers
                         posodica_pod_roko=pin_in_bowl_2_centers
 
-                    centers_spodaj_final,centers_zgoraj_final=pini_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp)
-                    #-------------------------------------------------------------------------------
+                    if razporedi_centre_lukenj==True:
+                        #enkrat razporedimo centre lukenj v 3x3 grid
+                        centers_spodaj_final,centers_zgoraj_final=luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp)
+                        razporedi_centre_lukenj=False
 
-                    # procesiranje slik izvedemo le, če je setup dokončno opravljen:
-                    if setup==3:
-                        
-                        # v primeru odvzemanje se v vsakem ciklu ponastavi seznam vstavljenih pinov
-                        if action=="odvzemanje" and len(pin_centers_spodaj)>0:
-                            inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
-                            
-                        # za vsak vstavljen pin najdemo primerno točko iz 3x3 grid-a lukenj:
-                        for pins in range(len(pin_centers_spodaj)):
-                            tracking_cnt=0
-                            for luknje in range(len(centers_spodaj_final)):
-                                pin_index=pins
-                                if pin_centers_spodaj[pin_index][x]>(centers_spodaj_final[luknje][x]-radij_tocnosti/2) and pin_centers_spodaj[pin_index][x]<(centers_spodaj_final[luknje][x]+radij_tocnosti/2) and pin_centers_spodaj[pin_index][y]>(centers_spodaj_final[luknje][y]-radij_tocnosti/2) and pin_centers_spodaj[pin_index][y]<(centers_spodaj_final[luknje][y]+radij_tocnosti/2) :
+                        dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
+                        dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
+                        radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
+                        center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
 
-                                    if inserted_pins_spodaj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
-                                        inserted_pins_spodaj[math.floor(luknje/3)][math.floor(luknje%3)]=1
-                                    
-                        if action=="odvzemanje" and len(pin_centers_zgoraj)>0:
-                            inserted_pins_zgoraj=[[0,0,0],[0,0,0],[0,0,0]]
-                        for pins in range(len(pin_centers_zgoraj)):
-                            tracking_cnt=0
-                            for luknje in range(len(centers_zgoraj_final)):
-                                pin_index=pins
-                                
-                                if pin_centers_zgoraj[pin_index][x]>(centers_zgoraj_final[luknje][x]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][x]<(centers_zgoraj_final[luknje][x]+radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]>(centers_zgoraj_final[luknje][y]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]<(centers_zgoraj_final[luknje][y]+radij_tocnosti/2) :
-                                    luknje=len(centers_zgoraj_final)-1-luknje
-                                    if inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
-                                        inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]=1
-                                
-                        sprememba=0
-                        for i in range(9):
-                            if inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]>old_inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]:
-                                sprememba=1
+                    if premaknjen_board==True:
+                        #
+                        # sem paše transormacija 3x3 grida lukenj s transf matriko
 
-                        if action=="vstavljanje":
-                            pin_count=0
-                        elif action=="odvzemanje":
-                            pin_count=9
+                        dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
+                        dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
+                        radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
+                        center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
+
+                        premaknjen_board=False
                     
-                        for p in range(9):
-                            if inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==1 and action=="vstavljanje":
-                                pin_count=pin_count+1
+                    # prikaz najdenih pinov v bowlu in obseg bowla
+                    if debug_bowl==1:
+                        index=0
+                        for a in centers_zgoraj_final:
+                            cv.circle(slikaaa, (a[0], a[1]), 7, (0, 225, index*20), -1)
+                            index+=1
+                        cv.circle(slikaaa, (int(center_bowla_blizje_kameri[0]), int(center_bowla_blizje_kameri[1])), 3, (0, 0, 255), -1)
+                        cv.circle(slikaaa, (int(center_bowla_blizje_kameri[0]), int(center_bowla_blizje_kameri[1])), int(radij_bowla), (0, 0, 255), 3)
+                        cv.imshow("centr",slikaaa)
+                    
+                    #-------------------------------------------------------------------------------
+                    #izločanje najdenih pinov v bowlu:
+                    
+                    posodica_pod_roko_copy=posodica_pod_roko.copy()
+                    stevilo_izlocenih=0
+                    #print(posodica_pod_roko)
+                    for pb in range(len(posodica_pod_roko)):
+                        razdalja_centr_bowl_pin=math.sqrt(math.pow(posodica_pod_roko[pb][0]-center_bowla_blizje_kameri[0],2)+math.pow(posodica_pod_roko[pb][1]-center_bowla_blizje_kameri[1],2))
+                        #print(str(pb)+"|"+str(posodica_pod_roko[pb])+"|"+str(razdalja_centr_bowl_pin)+"|"+str(radij_bowla)+"|"+str(center_bowla_blizje_kameri))
+                        if (razdalja_centr_bowl_pin>radij_bowla):
+                            posodica_pod_roko_copy.pop(pb-stevilo_izlocenih)
+                            stevilo_izlocenih+=1
+                    posodica_pod_roko=posodica_pod_roko_copy
+                    
+
+
+                    """
+                    area=0
+                    for a in tc:#tc=canny iz dark shapes
+                        M = cv.moments(a)
+                        if M['m00'] != 0:
+                            cx = int(M['m10']/M['m00'])
+                            cy = int(M['m01']/M['m00'])
+                        razdalja=math.sqrt(math.pow(cx-center_bowla_blizje_kameri[0],2)+math.pow(cy-center_bowla_blizje_kameri[1],2))
+                        if razdalja<=radij_bowla:
+                            area+=cv.contourArea(a)
+                    print("število pinov: "+str(area/80))
+                    """
+                    #-------------------------------------------------------------------------
+
+                    # v primeru odvzemanja se v vsakem ciklu ponastavi seznam vstavljenih pinov
+                    if action=="odvzemanje" and len(pin_centers_spodaj)>0:
+                        inserted_pins_spodaj=[[0,0,0],[0,0,0],[0,0,0]]
+                    
+                    # za vsak vstavljen pin najdemo primerno točko iz 3x3 grid-a lukenj:
+                    for pins in range(len(pin_centers_spodaj)):
+                        tracking_cnt=0
+                        for luknje in range(len(centers_spodaj_final)):
+                            pin_index=pins
+                            if pin_centers_spodaj[pin_index][x]>(centers_spodaj_final[luknje][x]-radij_tocnosti/2) and pin_centers_spodaj[pin_index][x]<(centers_spodaj_final[luknje][x]+radij_tocnosti/2) and pin_centers_spodaj[pin_index][y]>(centers_spodaj_final[luknje][y]-radij_tocnosti/2) and pin_centers_spodaj[pin_index][y]<(centers_spodaj_final[luknje][y]+radij_tocnosti/2) :
+
+                                if inserted_pins_spodaj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
+                                    inserted_pins_spodaj[math.floor(luknje/3)][math.floor(luknje%3)]=1
                                 
-                            elif inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==0 and action=="odvzemanje":
-                                pin_count=pin_count-1
-                        num_pins_verified=pin_count
-                        s
-                        if action=="odvzemanje" and pin_count>odvzemanje_tracker_max:
-                            odvzemanje_flag_once=odvzemanje_flag_once+1
-                            if odvzemanje_flag_once>2:
-                                odvzemanje_tracker_max=pin_count
-                                odvzemanje_flag_once=0
-                        elif pin_count<odvzemanje_tracker_max:
+                    # zaznavanje ponovimo za kamero, ki ima 3x3 grid na zgornji polovici slike:
+                    if action=="odvzemanje" and len(pin_centers_zgoraj)>0:
+                        inserted_pins_zgoraj=[[0,0,0],[0,0,0],[0,0,0]]
+                    for pins in range(len(pin_centers_zgoraj)):
+                        tracking_cnt=0
+                        for luknje in range(len(centers_zgoraj_final)):
+                            pin_index=pins
+                            
+                            if pin_centers_zgoraj[pin_index][x]>(centers_zgoraj_final[luknje][x]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][x]<(centers_zgoraj_final[luknje][x]+radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]>(centers_zgoraj_final[luknje][y]-radij_tocnosti/2) and pin_centers_zgoraj[pin_index][y]<(centers_zgoraj_final[luknje][y]+radij_tocnosti/2) :
+                                luknje=len(centers_zgoraj_final)-1-luknje
+                                if inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]!=1:
+                                    inserted_pins_zgoraj[math.floor(luknje/3)][math.floor(luknje%3)]=1
+
+                    #primerjamo staro in trenutno stanje zaznanih pinov        
+                    sprememba=0
+                    for i in range(9):
+                        if inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]>old_inserted_pins_spodaj[math.floor(i/3)][math.floor(i%3)]:
                             sprememba=1
+
+                    #za štetje pinov ponastavimo število pinov glede na fazo
+                    if action=="vstavljanje":
+                        pin_count=0
+                    elif action=="odvzemanje":
+                        pin_count=9
+                
+                    # preštejemo (oz. odštejemo) trenutno število pinov in shranimo
+                    for p in range(9):
+                        if inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==1 and action=="vstavljanje":
+                            pin_count=pin_count+1  
+                        elif inserted_pins_spodaj[math.floor(p/3)][math.floor(p%3)]==0 and action=="odvzemanje":
+                            pin_count=pin_count-1
+                    num_pins_verified=pin_count
+                    
+                    #pri odvzemanju spremljamo število pinov (ki ga spremenimo če pogoj drži nekaj frame-ov)
+                    if action=="odvzemanje" and pin_count>odvzemanje_tracker_max:
+                        odvzemanje_flag_once=odvzemanje_flag_once+1
+                        if odvzemanje_flag_once>2:
                             odvzemanje_tracker_max=pin_count
-                            #old_inserted_pins=np.logical_and(old_inserted_pins,inserted_pins)
+                            odvzemanje_flag_once=0
+                    elif pin_count<odvzemanje_tracker_max: # če je manjše število kot program pomni, se je zgodila sprememba in spremenilo največje število pinov
+                        sprememba=1
+                        odvzemanje_tracker_max=pin_count
+                        #old_inserted_pins=np.logical_and(old_inserted_pins,inserted_pins)
 
-                        if sprememba==1 and action=="vstavljanje":
+                    # če se je zgodila sprememba in smo v fazi vstaljanja v 3x3 grid
+                    if sprememba==1 and action=="vstavljanje":
 
-                            if debug_sprotno_stanje==1:
-                                print("-----------------")
-                                print("Frame:" + str(frame))
-                                print("faza: vstavljanje")
-                                for c in range(3):
-                                    print(inserted_pins_zgoraj[c])
-                                print("~~~~~~~~~~~~~~~")
-                                for c in range(3):
-                                    print(inserted_pins_spodaj[c])
-                                print("-----------------")
-                            
-                            if action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
-                                last_action="odlaganje_pina"
-                                num_pins_hypo+=1
-
-                                action_start_frame=last_action_frame+1
-                                action_end_frame=frame-1
-                                if action_end_frame<action_start_frame:
-                                    action_end_frame=action_start_frame
-
-                                zgodovina.append(["prenos_pina",action_start_frame,action_end_frame])
-                                last_action_num=2
-
-                                last_action_frame=action_end_frame
-
-                                action_start_frame=last_action_frame+1
-                                action_end_frame=frame
-                                if action_end_frame<action_start_frame:
-                                    action_end_frame=action_start_frame
-
-                                zgodovina.append([last_action,action_start_frame,action_end_frame])
-                                last_action_num=3
-
-                                last_action_frame=action_end_frame
-                                action_assigned=True
-
-
-                            if debug_prikaz==1:
-                                prikazi_vmesne_korake=1
-                            
-                        #   if action=="odvzemanje":
-                        #       old_inserted_pins=np.logical_and(old_inserted_pins,inserted_pins)
-                        #   if action=="vstavljanje":
-                            old_inserted_pins_spodaj=np.logical_or(old_inserted_pins_spodaj,inserted_pins_spodaj)
-                            old_inserted_pins_zgoraj=np.logical_or(old_inserted_pins_zgoraj,inserted_pins_zgoraj)
-                            
-                            if debug_outlines==1:
-                                cv.imshow("Edges | Frame: "+str(frame) +" - cam1", edges)
-                                cv.imshow("Shapes | Frame: "+str(frame)+" - cam1", result)
-
-                                cv.imshow("Edges | Frame: "+str(frame) +" - cam2", edges_2)
-                                cv.imshow("Shapes | Frame: "+str(frame)+" - cam2", result_2)
-
-                                cv.waitKey(0)
-                                cv.destroyAllWindows()
-
-                            sprememba=0
+                        if debug_sprotno_stanje==1:
+                            print("-----------------")
+                            print("Frame:" + str(frame))
+                            print("faza: vstavljanje")
+                            for c in range(3):
+                                print(inserted_pins_zgoraj[c])
+                            print("~~~~~~~~~~~~~~~")
+                            for c in range(3):
+                                print(inserted_pins_spodaj[c])
+                            print("-----------------")
                         
+                        # če frame-u ni bila dodeljena akcija in to ni prvi pripis dogoka, nazadnje se je pa zgodilo pobiranje (1)
+                        if action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
+                            last_action="odlaganje_pina"
+                            num_pins_hypo+=1
 
-                        if sprememba==1 and action=="odvzemanje":
-                            if debug_prikaz==1:
-                                prikazi_vmesne_korake=1
-                            if debug_sprotno_stanje==1:
-                                print("-----------------")
-                                print("frame: "+str(frame))
-                                print("faza: odvzemanje")
-                                #print("stanje: "+str(pin_count)+"|"+str(odvzemanje_tracker_max))
-                                for c in range(3):
-                                    print(inserted_pins_zgoraj[c])
-                                print("~~~~~~~~~~~~~~~")
-                                for cd in range(3):
-                                    print(inserted_pins_spodaj[cd])
-                                print("-----------------")
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame-1
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
 
-                            if action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
+                            zgodovina.append(["prenos_pina",action_start_frame,action_end_frame])
+                            last_action_num=2
+
+                            last_action_frame=action_end_frame
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append([last_action,action_start_frame,action_end_frame])
+                            last_action_num=3
+
+                            last_action_frame=action_end_frame
+                            action_assigned=True
+                            # akcija je pripisana frameu, označen konec framea in zadnja akcija je (3- odlaganje)
+
+
+                        if debug_prikaz==1:
+                            prikazi_vmesne_korake=1
+                        
+                    #   if action=="odvzemanje":
+                    #       old_inserted_pins=np.logical_and(old_inserted_pins,inserted_pins)
+                    #   if action=="vstavljanje":
+
+                        old_inserted_pins_spodaj=np.logical_or(old_inserted_pins_spodaj,inserted_pins_spodaj)
+                        old_inserted_pins_zgoraj=np.logical_or(old_inserted_pins_zgoraj,inserted_pins_zgoraj)
+                        
+                        if debug_outlines==1:
+                            cv.imshow("Edges | Frame: "+str(frame) +" - cam1", edges)
+                            cv.imshow("Shapes | Frame: "+str(frame)+" - cam1", result)
+
+                            cv.imshow("Edges | Frame: "+str(frame) +" - cam2", edges_2)
+                            cv.imshow("Shapes | Frame: "+str(frame)+" - cam2", result_2)
+
+                        sprememba=0
+                    
+                    # če se je zgodila sprememba in smo v fazi odvzemanja (iz 3x3 grida)
+                    if sprememba==1 and action=="odvzemanje":
+                        if debug_prikaz==1:
+                            prikazi_vmesne_korake=1
+                        if debug_sprotno_stanje==1:
+                            print("-----------------")
+                            print("frame: "+str(frame))
+                            print("faza: odvzemanje")
+                            #print("stanje: "+str(pin_count)+"|"+str(odvzemanje_tracker_max))
+                            for c in range(3):
+                                print(inserted_pins_zgoraj[c])
+                            print("~~~~~~~~~~~~~~~")
+                            for cd in range(3):
+                                print(inserted_pins_spodaj[cd])
+                            print("-----------------")
+
+                        if action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
+                            last_action="prijemanje_pina"
+                            num_pins_hypo-=1
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame-1
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
+                            last_action_num=4
+
+                            last_action_frame=action_end_frame
+
+                            action_start_frame=last_action_frame+1
+                            action_end_frame=frame
+                            if action_end_frame<action_start_frame:
+                                action_end_frame=action_start_frame
+
+                            zgodovina.append([last_action,action_start_frame,action_end_frame])
+                            last_action_num=1
+
+                            last_action_frame=action_end_frame
+                            action_assigned=True
+
+
+                        if debug_outlines==1:
+                            cv.imshow("Detected Edges in ROI - cam1", edges)
+                            cv.imshow(f"Shape Detection in ROI - cam1 (Area: {min_area}-{max_area})", result)
+
+                            cv.imshow("Detected Edges in ROI - cam2", edges_2)
+                            cv.imshow(f"Shape Detection in ROI - cam2 (Area: {min_area}-{max_area})", result_2)
+
+                    sprememba=0
+
+                    # logika za stevilo objekov v posodici
+                    stevilo_objektov_v_posodici=len(posodica_pod_roko)
+                    if stevilo_objektov_v_posodici>9:
+                        stevilo_objektov_v_posodici=9
+                    
+                    stevilo_objektov_v_posodici_max_tmp=stevilo_objektov_v_posodici_max_tmp+stevilo_objektov_v_posodici
+
+                    if stevilo_objektov_v_posodici!=0:
+                        avrg_posodica=avrg_posodica+1
+
+                    avrg_posodica_backup=avrg_posodica_backup+1
+                    num_frames_per_avrg=4
+
+                    if stevilo_objektov_v_posodici_max==-1:
+                        stevilo_objektov_v_posodici_max=stevilo_objektov_v_posodici
+                        #posodica_flag=True
+                        avrg_posodica=1
+                        avrg_posodica_backup=1
+                        stevilo_objektov_v_posodici_max_tmp=0
+
+
+                    elif avrg_posodica_backup>=num_frames_per_avrg :
+
+                        stevilo_objektov_v_posodici_max=math.floor(stevilo_objektov_v_posodici_max_tmp/(num_frames_per_avrg))
+                        posodica_flag=False
+                        stevilo_objektov_v_posodici_max_tmp=0
+                        avrg_posodica=1
+                        avrg_posodica_backup=1
+                        if debug_bowl==1:
+                            print("V posodi je: "+str(len(stevilo_objektov_v_posodici_max))+"pinov (po povprečenju).")
+
+                    if debug_akcije==1:
+                        print("RN: "+str(stevilo_objektov_v_posodici)+" | TMP: "+str(stevilo_objektov_v_posodici_max_tmp)+" | MAX: "+str(stevilo_objektov_v_posodici_max)+" | FRAME: "+str(frame)+" | LN: "+str(last_action_num)+" | FLG: "+str(posodica_flag)+" | BWL: "+str(start_frame_pokrivanja_bowla)+" | A: "+action+" | LA: "+last_action+" | ZG: "+str(len(zgodovina)))
+                    
+                    # Logika za pokrivanje bowla z roko: če je zabeleženo št objektov v posodici večje od trenutnega, akcija je je bilo nazadnje odlaganje, če ne pokrivamo že
+                    if  stevilo_objektov_v_posodici_max>stevilo_objektov_v_posodici and (last_action_num==3 or len(zgodovina)==0) and posodica_flag==False and start_frame_pokrivanja_bowla==0 : #and ((last_action=="odlaganje_pina" and action=="vstavljanje")or(last_action=="prijemanje_pina" and action=="odvzemanje")or(len(zgodovina)==0))
+                        posodica_flag=True
+                        start_frame_pokrivanja_bowla=frame
+
+                    # če odkrijemo da je trenutno več objektov v posodici kot smo si zapomnili (medtem ko je bila pokrita nižje povprečje) in če smo že začeli štopati:
+                    if stevilo_objektov_v_posodici_max<stevilo_objektov_v_posodici and start_frame_pokrivanja_bowla!=0:
+                        stop_frame_pokrivanja_bowla=frame
+                        if (stop_frame_pokrivanja_bowla-start_frame_pokrivanja_bowla)>1:
+                            if debug==1:
+                                print("roka pokriva bowl! start frame: "+str(start_frame_pokrivanja_bowla)+", stop frame: "+str(stop_frame_pokrivanja_bowla))
+
+                            # za začetek videja:
+                            if len(zgodovina)==0 and action_assigned==False:
+
+                                action_start_frame=1
+                                action_end_frame=start_frame_pokrivanja_bowla
+                                if action_end_frame<action_start_frame:
+                                    action_end_frame=action_start_frame
+
+                                zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
+                                last_action_num=4
+                                #print("konc uvoda: "+str(last_action_frame)+"  "+str(start_frame_pokrivanja_bowla))
+                                last_action_frame=action_end_frame
                                 last_action="prijemanje_pina"
-                                num_pins_hypo-=1
+
+                            elif action=="vstavljanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
 
                                 action_start_frame=last_action_frame+1
-                                action_end_frame=frame-1
+                                action_end_frame=start_frame_pokrivanja_bowla
                                 if action_end_frame<action_start_frame:
                                     action_end_frame=action_start_frame
 
@@ -1341,160 +1592,71 @@ if __name__ == "__main__":
                                 last_action_num=4
 
                                 last_action_frame=action_end_frame
+                                last_action="prijemanje_pina"
+                                
+                            elif action=="odvzemanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
 
                                 action_start_frame=last_action_frame+1
-                                action_end_frame=frame
+                                action_end_frame=start_frame_pokrivanja_bowla#-1
+                                if action_end_frame<action_start_frame:
+                                    action_end_frame=action_start_frame
+
+                                zgodovina.append(["prenos_pina",action_start_frame,action_end_frame])
+                                last_action_num=2
+
+                                last_action_frame=action_end_frame
+                                last_action="odlaganje_pina"
+                                
+                            # "LUT" za akcije
+                            if last_action=="prijemanje_pina":
+                                last_action_num=1
+                            elif last_action=="prenos_pina":
+                                last_action_num=2
+                            elif last_action=="odlaganje_pina":
+                                last_action_num=3
+                            elif last_action=="prazna_roka":
+                                last_action_num=4
+                            
+                            if action_assigned==False and len(zgodovina)!=0:
+
+                                action_start_frame=last_action_frame+1
+                                action_end_frame=stop_frame_pokrivanja_bowla
                                 if action_end_frame<action_start_frame:
                                     action_end_frame=action_start_frame
 
                                 zgodovina.append([last_action,action_start_frame,action_end_frame])
-                                last_action_num=1
 
                                 last_action_frame=action_end_frame
-                                action_assigned=True
-
-
-                            if debug_outlines==1:
-                                cv.imshow("Detected Edges in ROI - cam1", edges)
-                                cv.imshow(f"Shape Detection in ROI - cam1 (Area: {min_area}-{max_area})", result)
-
-                                cv.imshow("Detected Edges in ROI - cam2", edges_2)
-                                cv.imshow(f"Shape Detection in ROI - cam2 (Area: {min_area}-{max_area})", result_2)
-
-                                cv.waitKey(0)
-                                cv.destroyAllWindows()
-                        sprememba=0
-
-
-                        # logika za stevilo objekov v posodici
-
-                        stevilo_objektov_v_posodici=len(posodica_pod_roko)
-                        
-                        stevilo_objektov_v_posodici_max_tmp=stevilo_objektov_v_posodici_max_tmp+stevilo_objektov_v_posodici
-
-                        if stevilo_objektov_v_posodici!=0:
-                            avrg_posodica=avrg_posodica+1
-
-                        avrg_posodica_backup=avrg_posodica_backup+1
-                        num_frames_per_avrg=4
-
-                        if stevilo_objektov_v_posodici_max==-1:
-                            stevilo_objektov_v_posodici_max=stevilo_objektov_v_posodici
-                            #posodica_flag=True
-                            avrg_posodica=1
-                            avrg_posodica_backup=1
-                            stevilo_objektov_v_posodici_max_tmp=0
-
-
-                        elif avrg_posodica_backup>=num_frames_per_avrg :
-
-                            stevilo_objektov_v_posodici_max=math.floor(stevilo_objektov_v_posodici_max_tmp/(num_frames_per_avrg))
-                            posodica_flag=False
-                            stevilo_objektov_v_posodici_max_tmp=0
-                            avrg_posodica=1
-                            avrg_posodica_backup=1
-
-                        if debug_akcije==1:
-                            print("RN: "+str(stevilo_objektov_v_posodici)+" | TMP: "+str(stevilo_objektov_v_posodici_max_tmp)+" | MAX: "+str(stevilo_objektov_v_posodici_max)+" | FRAME: "+str(frame)+" | LN: "+str(last_action_num)+" | FLG: "+str(posodica_flag)+" | BWL: "+str(start_frame_pokrivanja_bowla)+" | A: "+action+" | LA: "+last_action+" | ZG: "+str(len(zgodovina)))
-                        
-                        # Logika za pokrivanje bowla z roko:
-                        if  stevilo_objektov_v_posodici_max>stevilo_objektov_v_posodici and (last_action_num==3 or len(zgodovina)==0) and posodica_flag==False and start_frame_pokrivanja_bowla==0 : #and ((last_action=="odlaganje_pina" and action=="vstavljanje")or(last_action=="prijemanje_pina" and action=="odvzemanje")or(len(zgodovina)==0))
-
-                            posodica_flag=True
-                            start_frame_pokrivanja_bowla=frame
-
-
-                        if stevilo_objektov_v_posodici_max<stevilo_objektov_v_posodici and start_frame_pokrivanja_bowla!=0:
-                            stop_frame_pokrivanja_bowla=frame
-                            if (stop_frame_pokrivanja_bowla-start_frame_pokrivanja_bowla)>1:
-                                if debug==1:
-                                    print("roka pokriva bowl! start frame: "+str(start_frame_pokrivanja_bowla)+", stop frame: "+str(stop_frame_pokrivanja_bowla))
-
-                                # za začetek videja:
-                                if len(zgodovina)==0 and action_assigned==False:
-
-                                    action_start_frame=1
-                                    action_end_frame=start_frame_pokrivanja_bowla
-                                    if action_end_frame<action_start_frame:
-                                        action_end_frame=action_start_frame
-
-                                    zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
-                                    last_action_num=4
-                                    #print("konc uvoda: "+str(last_action_frame)+"  "+str(start_frame_pokrivanja_bowla))
-                                    last_action_frame=action_end_frame
-                                    last_action="prijemanje_pina"
-
-                                elif action=="vstavljanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
-
-                                    action_start_frame=last_action_frame+1
-                                    action_end_frame=start_frame_pokrivanja_bowla
-                                    if action_end_frame<action_start_frame:
-                                        action_end_frame=action_start_frame
-
-                                    zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
-                                    last_action_num=4
-
-                                    last_action_frame=action_end_frame
-                                    last_action="prijemanje_pina"
-                                    
-                                elif action=="odvzemanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
-
-                                    action_start_frame=last_action_frame+1
-                                    action_end_frame=start_frame_pokrivanja_bowla#-1
-                                    if action_end_frame<action_start_frame:
-                                        action_end_frame=action_start_frame
-
-                                    zgodovina.append(["prenos_pina",action_start_frame,action_end_frame])
-                                    last_action_num=2
-
-                                    last_action_frame=action_end_frame
-                                    last_action="odlaganje_pina"
-                                    
-                                if last_action=="prijemanje_pina":
-                                    last_action_num=1
-                                elif last_action=="prenos_pina":
-                                    last_action_num=2
-                                elif last_action=="odlaganje_pina":
-                                    last_action_num=3
-                                elif last_action=="prazna_roka":
-                                    last_action_num=4
-                                
-                                if action_assigned==False and len(zgodovina)!=0:
-
-                                    action_start_frame=last_action_frame+1
-                                    action_end_frame=stop_frame_pokrivanja_bowla
-                                    if action_end_frame<action_start_frame:
-                                        action_end_frame=action_start_frame
-
-                                    zgodovina.append([last_action,action_start_frame,action_end_frame])
-
-                                    last_action_frame=action_end_frame
-                                    stop_frame_pokrivanja_bowla=0
-                                    start_frame_pokrivanja_bowla=0
-                                    action_assigned=True
-                            else:
                                 stop_frame_pokrivanja_bowla=0
                                 start_frame_pokrivanja_bowla=0
-                            posodica_flag=True
-                        
-                        if pin_count==9 and action=="vstavljanje":
-                            if debug_sprotno_stanje==1:
-                                print("Vse pini so bili vstavljeni, frame: "+str(frame))
-                            action="odvzemanje"
-                        elif pin_count==0 and action=="odvzemanje" and len(pin_centers_spodaj)==0:
-                            if debug_sprotno_stanje==1:
-                                print("Vsi pini so bili pobrani, frame: "+str(frame))
-                            action="konec"
-                        elif action=="konec":
-                            if debug_sprotno_stanje==1:
-                                print("konec, frame: "+str(frame))
+                                action_assigned=True
+                        else:
+                            stop_frame_pokrivanja_bowla=0
+                            start_frame_pokrivanja_bowla=0
+                        posodica_flag=True
+                    
+                    if pin_count==9 and action=="vstavljanje":
+                        if debug_sprotno_stanje==1:
+                            print("Vse pini so bili vstavljeni, frame: "+str(frame))
+                        action="odvzemanje"
+                    elif pin_count==0 and action=="odvzemanje" and len(pin_centers_spodaj)==0:
+                        if debug_sprotno_stanje==1:
+                            print("Vsi pini so bili pobrani, frame: "+str(frame))
+                        action="konec"
+                    elif action=="konec":
+                        if debug_sprotno_stanje==1:
+                            print("konec, frame: "+str(frame))
+
+            if debug_outlines==1 or debug_pins==1 or debug_sprotno_stanje==1 or debug_prikazi_vsak_frame==1 or debug_bowl==1:
+                cv.waitKey(0)
+                cv.destroyAllWindows()
 
         frame=frame+1
 
         action_assigned=False
 
-    if debug_sprotno_stanje==1:
-        print(zgodovina)
+    #if debug_sprotno_stanje==1:
+    #    print(zgodovina)
 
     create_annotation_json(ime_videja, zgodovina)
     print("JSON file "+ime_videja+" created successfully!")
