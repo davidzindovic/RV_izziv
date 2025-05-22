@@ -496,8 +496,9 @@ def sprememba_robov(image):#transf matrika overkil? sort?
 # Funkcija za iskanje pinov v bowlu
 def detect_dark_objects(image):
     # Read the image
-    img = image
+    img = image.copy()
     slikaa=image.copy()
+    og=image.copy()
     if img is None:
         print("Error: Could not read the image.")
         return
@@ -511,14 +512,16 @@ def detect_dark_objects(image):
     
     # Convert ROI to grayscale
     gray = cv.cvtColor(roi_img, cv.COLOR_BGR2GRAY)
+    gray_og = cv.cvtColor(og, cv.COLOR_BGR2GRAY)
     
     # Enhanced contrast for dark regions
-    #alpha = 2  # Contrast control (1.0-3.0)
-    #beta = -100    # Brightness control (-100 to 100)
-    alpha = 0.5  # Contrast control (1.0-3.0)
-    beta = 50    # Brightness control (-100 to 100)
+    alpha = 2  # Contrast control (1.0-3.0)
+    beta = -100    # Brightness control (-100 to 100)
+    #alpha = 0.5  # Contrast control (1.0-3.0)
+    #beta = 50    # Brightness control (-100 to 100)
     enhanced = cv.convertScaleAbs(gray, alpha=alpha, beta=beta)
     #enhanced=cv.add(gray,150)
+    enhanced_og = cv.convertScaleAbs(gray_og, alpha=alpha, beta=beta)
 
 
     #histogram matching:
@@ -534,18 +537,20 @@ def detect_dark_objects(image):
 
     # Combine with Canny edge detection
     blurred = cv.GaussianBlur(enhanced, (5, 5), 0)
+    blurred_og=cv.GaussianBlur(enhanced_og, (5, 5), 0)
     #blurred=cv.medianBlur(enhanced,3)
 
     # Apply adaptive thresholding for better edge detection
-    thresh = cv.adaptiveThreshold(blurred, 255,
-                                 cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-                                 cv.THRESH_BINARY_INV, 11, 2)
+    #thresh = cv.adaptiveThreshold(blurred, 255,
+    #                             cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+    #                             cv.THRESH_BINARY_INV, 11, 2)
 
     #laplace:
     #s=cv.Laplacian(blurred,cv.CV_64F)
     #cv.imshow("sobel",s)
 
-    #_,thresh=cv.threshold(enhanced,120,255,cv.THRESH_BINARY)
+    _,thresh=cv.threshold(enhanced,254,255,cv.THRESH_BINARY)
+    _,thresh_og=cv.threshold(blurred_og,254,255,cv.THRESH_BINARY)
     #thresh=cv.bitwise_not(thresh)
     #cv.imshow("t1",thresh)
     #_,thresh=cv.threshold(enhanced,200,255,cv.THRESH_BINARY_INV)
@@ -562,8 +567,10 @@ def detect_dark_objects(image):
     """
     
     edges = cv.Canny(blurred, 40, 100)
-    combined_edges = cv.bitwise_or(thresh, edges)
+    #combined_edges = cv.bitwise_or(thresh, edges)
+    #combined_edges=cv.bitwise_not(combined_edges)
     #combined_edges=edges
+    combined_edges=thresh
 
     #kernel = cv.getStructuringElement(cv.MORPH_CROSS,(5,5))
     #dilated = cv.dilate(combined_edges, kernel)
@@ -587,25 +594,23 @@ def detect_dark_objects(image):
 
     centri_pravilne_konture=[]
     if debug_bowl==1:
-        cv.imshow("Edges",combined_edges)
+        cv.imshow("Edges",thresh_og)
         cv.imshow("Blurred",blurred)
     # Process each contour
     object_counter = 0
     obj_display = img.copy()
     
     #print("----------")
+    counter=0
+    cn2=0
+
+    povrsine_kontur=[]
     for contour in contours:
-        # Calculate contour area and filter
-        area = cv.contourArea(contour)
-
-        # Create a mask for the current contour
-        mask = np.zeros_like(gray)
-        cv.drawContours(mask, [contour], -1, 255, -1)
-
-        # Calculate mean pixel value within the contour
-        mean_val = cv.mean(gray, mask=mask)[0]
-
         translated_contour = contour + np.array([x, y])
+        hull = cv.convexHull(translated_contour)
+        slikaa = cv.drawContours(slikaa,[translated_contour],0,(0,255,0),2)
+        slikaa = cv.drawContours(slikaa,[hull],0,(0,0,255),3)
+
         M = cv.moments(translated_contour)
         cx=0
         cy=0
@@ -613,18 +618,57 @@ def detect_dark_objects(image):
             cx = int(M['m10']/M['m00'])
             cy = int(M['m01']/M['m00'])
 
-        #print(mean_val,area,cx,cy)
+        # Calculate contour area and filter
+        #area = cv.contourArea(contour)
+        area = cv.contourArea(hull)
 
-        if area < 40 or area > 500:
-            continue   
+        # Create a mask for the current contour
+        mask = np.zeros_like(gray)
+        cv.drawContours(mask, [contour], -1, 255, -1)
+
+        # Calculate mean pixel value within the contour
+        mean_val = cv.mean(gray, mask=mask)[0]
         
-        if mean_val < 200:
+        if area < 60 :#or area > 500
+            continue   
+
+        
+
+        #pin_bowl_center_distance=math.sqrt(math.pow(cx-bowl_center_x,2)+math.pow(cy-bowl_center_y,2))
+
+        #if pin_bowl_center_distance>bowl_radius:
+        #    continue
+
+        
+        #translated_contour = contour + np.array([x, y])
+        #M = cv.moments(translated_contour)
+        #cx=0
+        #cy=0
+        #if M['m00'] != 0:
+        #    cx = int(M['m10']/M['m00'])
+        #    cy = int(M['m01']/M['m00'])
+
+        #hull = cv.convexHull(translated_contour)
+        #slikaa = cv.drawContours(slikaa,[translated_contour],0,(0,255,0),2)
+        #slikaa = cv.drawContours(slikaa,[hull],0,(0,0,255),3)
+
+
+        #counter+=1
+        #if counter>10:
+        #    cn2+=1
+        #    cv.imshow(str(cn2),slikaa)
+        #    slikaa=image.copy()
+
+
+
+        if mean_val < 240:
             object_counter += 1
             # Create a copy of the original image for this object
             
             # Translate contour coordinates back to original image
 
             centri_pravilne_konture.append([cx,cy])
+            povrsine_kontur.append(area)
 
             if debug_bowl==1:
                 cv.circle(obj_display, (cx, cy), 3, (0, 0, 255), -1)
@@ -641,7 +685,7 @@ def detect_dark_objects(image):
         cv.waitKey(0)
         cv.destroyAllWindows()
 
-    return centri_pravilne_konture
+    return centri_pravilne_konture,povrsine_kontur,thresh_og
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
@@ -1128,6 +1172,14 @@ if __name__ == "__main__":
     bowl_cnt=0
 
     radij_bowla=0
+    pin_in_bowl_data_flag=True
+    number_of_pins_in_bowl_ago=0
+    number_of_pins_in_bowl_ago_ago=0
+    bowl_factor=3500/9 # "površina" enega pina
+    zeljeno_stevilo_bowl_pinov=9 # koliko pinov pričakujemo kot naslednji pravilni odgovor
+    zeljeno_stevilo_tracker=0   # spremenljivka za spremljanje koliko frameov smo imeli željeno število pinov v bowlu
+    trenutno_stevilo_pinov_v_bowlu=0 # potrjeno število pinov
+    current_state="ni roka"
 
     action_assigned=False
     action_start_frame=0
@@ -1176,8 +1228,10 @@ if __name__ == "__main__":
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
 
-            pin_in_bowl_2_centers=detect_dark_objects(slika)
-            pin_in_bowl_2_centers_2=detect_dark_objects(slika_2)
+            if pin_in_bowl_data_flag==True:
+                pin_in_bowl_2_centers,area_pin_bowl,po_thr=detect_dark_objects(slika)
+                pin_in_bowl_2_centers_2,area_pin_bowl_2,po_thr_2=detect_dark_objects(slika_2)
+                pin_in_bowl_data_flag=False
 
             #poiščemo transformacijski matriki obej kamer za preslikavo točk bowla in lukenj za pine
             #na podlagi robov main boarda
@@ -1277,39 +1331,51 @@ if __name__ == "__main__":
                     
                     # na podlagi kamere odločimo katere točke za pine uporabiti oz. katera kamera gleda odložene pine
                     # kamera, ki ima bowl blizje gleda vse shapes notri
+
                     if stran_lukenj=="spodaj":
                         pin_centers_spodaj=pin_centers
                         pin_centers_zgoraj=pin_centers_2
                         centers_spodaj_temp=centers
                         centers_zgoraj_temp=centers_2
                         posodica_pod_roko=pin_in_bowl_2_centers_2
+                        main_pin_bowl_area=area_pin_bowl_2
+                        main_thr=po_thr_2
+
                     elif stran_lukenj_2=="spodaj":
                         pin_centers_spodaj=pin_centers_2
                         pin_centers_zgoraj=pin_centers
                         centers_spodaj_temp=centers_2
                         centers_zgoraj_temp=centers
                         posodica_pod_roko=pin_in_bowl_2_centers
+                        main_pin_bowl_area=area_pin_bowl
+                        main_thr=po_thr
 
                     if razporedi_centre_lukenj==True:
                         #enkrat razporedimo centre lukenj v 3x3 grid
                         centers_spodaj_final,centers_zgoraj_final=luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp)
                         razporedi_centre_lukenj=False
 
-                        dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
-                        dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
-                        radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
-                        center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
+                        #dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
+                        #dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
+                        #radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
+                        #center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
 
                     if premaknjen_board==True:
                         #
                         # sem paše transormacija 3x3 grida lukenj s transf matriko
 
-                        dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
-                        dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
-                        radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
-                        center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
+                        #dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
+                        #dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
+                        #radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
+                        #center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
 
                         premaknjen_board=False
+
+                    dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
+                    dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
+                    radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
+                    center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
+                        
                     
                     # prikaz najdenih pinov v bowlu in obseg bowla
                     if debug_bowl==1:
@@ -1327,14 +1393,84 @@ if __name__ == "__main__":
                     posodica_pod_roko_copy=posodica_pod_roko.copy()
                     stevilo_izlocenih=0
                     #print(posodica_pod_roko)
+                    skupna_povrsina=0
                     for pb in range(len(posodica_pod_roko)):
                         razdalja_centr_bowl_pin=math.sqrt(math.pow(posodica_pod_roko[pb][0]-center_bowla_blizje_kameri[0],2)+math.pow(posodica_pod_roko[pb][1]-center_bowla_blizje_kameri[1],2))
                         #print(str(pb)+"|"+str(posodica_pod_roko[pb])+"|"+str(razdalja_centr_bowl_pin)+"|"+str(radij_bowla)+"|"+str(center_bowla_blizje_kameri))
                         if (razdalja_centr_bowl_pin>radij_bowla):
                             posodica_pod_roko_copy.pop(pb-stevilo_izlocenih)
                             stevilo_izlocenih+=1
+                        else:
+                            skupna_povrsina+=main_pin_bowl_area[pb]
                     posodica_pod_roko=posodica_pod_roko_copy
+                    if skupna_povrsina>5000:
+                        skupna_povrsina=5000
+                        #print("______")
+                    #print("število pinov: "+str(len(posodica_pod_roko))+", skupna površina: "+str(skupna_povrsina))
+                    #print("Torej v posodici je: "+str(math.floor(skupna_povrsina/(5000/9))))
                     
+                    #------------------------število pinov v bowlu glede na število črnih pikslov---------------------------
+                    #               to do: dinamična površina max 3500->____
+                    num_crni_piksli_bowl=0
+                    #print(frame)
+                    for y_coord in range(main_thr.shape[0]):
+                        for x_coord in range(main_thr.shape[1]):
+                            razdalja_centr_bowl_pin=math.sqrt(math.pow(x_coord-center_bowla_blizje_kameri[0],2)+math.pow(y_coord-center_bowla_blizje_kameri[1],2))
+                            if razdalja_centr_bowl_pin<radij_bowla and main_thr[y_coord][x_coord]==0:
+                                num_crni_piksli_bowl+=1
+                                #cv.circle(main_thr, (y_coord, x_coord), 1, (0, 0, 255), 1)
+                    stevilo_pinov_v_bowlu=math.floor(num_crni_piksli_bowl/bowl_factor)
+
+                    # če jih ne najde 9 ampak se prikaže roka v napoto -> sprememba last action in željenega št pinov
+                    if zeljeno_stevilo_bowl_pinov==9 and stevilo_pinov_v_bowlu>10:
+                        zeljeno_stevilo_bowl_pinov-=1
+                        print("roka na startu. Frame:"+str(frame))
+
+                    if stevilo_pinov_v_bowlu<10:
+                        if zeljeno_stevilo_bowl_pinov==stevilo_pinov_v_bowlu:
+                            zeljeno_stevilo_tracker+=1
+                            if zeljeno_stevilo_tracker==3:
+                                zeljeno_stevilo_tracker=0
+                                trenutno_stevilo_pinov_v_bowlu=stevilo_pinov_v_bowlu
+
+                                if action=="vstavljanje" and trenutno_stevilo_pinov_v_bowlu==0:
+                                    continue
+
+                                if trenutno_stevilo_pinov_v_bowlu<5 and action=="vstavljanje":
+                                    bowl_factor-=35
+                                elif stevilo_pinov_v_bowlu<5 and action=="odvzemanje":
+                                    bowl_factor+=35
+
+                                if action=="vstavljanje" and trenutno_stevilo_pinov_v_bowlu>0:
+                                    zeljeno_stevilo_bowl_pinov-=1
+                                elif action=="odvzemanje" and trenutno_stevilo_pinov_v_bowlu<9:
+                                    zeljeno_stevilo_bowl_pinov+=1
+                                
+                                print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                    if action=="odvzemanje":
+                        if stevilo_pinov_v_bowlu>10 and current_state=="ni roka":
+                            current_state="roka"
+                            trenutno_stevilo_pinov_v_bowlu+=1
+                            print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                        if stevilo_pinov_v_bowlu<10 and current_state=="roka":
+                            current_state="ni roka"
+                        #print("Odvzemanje: "+current_state)
+                    """
+                    if stevilo_pinov_v_bowlu<10:
+                        if stevilo_pinov_v_bowlu<number_of_pins_in_bowl_ago and number_of_pins_in_bowl_ago<=5 and stevilo_pinov_v_bowlu<5 and action=="vstavljanje":
+                            bowl_factor-=25
+                        elif stevilo_pinov_v_bowlu==(number_of_pins_in_bowl_ago+1) and stevilo_pinov_v_bowlu<5 and action=="odvzemanje":
+                            bowl_factor+=25
+                        print("Število črnih pikslov v bowlu: "+str(num_crni_piksli_bowl))
+                        print("V bowlu je: "+str(stevilo_pinov_v_bowlu)+" pinov. Bowl factor je: "+str(bowl_factor))
+                        print("--------------")
+                        if stevilo_pinov_v_bowlu<10 and ((stevilo_pinov_v_bowlu>number_of_pins_in_bowl_ago and action=="odvzemanje")or(stevilo_pinov_v_bowlu<number_of_pins_in_bowl_ago and action=="vstavljanje")):
+                            number_of_pins_in_bowl_ago=stevilo_pinov_v_bowlu
+                        #cv.imshow("bruh",main_thr)
+                    """
+                    pin_in_bowl_data_flag=True
+                    #print(stevilo_pinov_v_bowlu,number_of_pins_in_bowl_ago,action)
+                    #--------------------------------------------------------------------------------------------------------
 
 
                     """
@@ -1550,7 +1686,7 @@ if __name__ == "__main__":
                         avrg_posodica=1
                         avrg_posodica_backup=1
                         if debug_bowl==1:
-                            print("V posodi je: "+str(len(stevilo_objektov_v_posodici_max))+"pinov (po povprečenju).")
+                            print("V posodi je: "+str(stevilo_objektov_v_posodici_max)+"pinov (po povprečenju).")
 
                     if debug_akcije==1:
                         print("RN: "+str(stevilo_objektov_v_posodici)+" | TMP: "+str(stevilo_objektov_v_posodici_max_tmp)+" | MAX: "+str(stevilo_objektov_v_posodici_max)+" | FRAME: "+str(frame)+" | LN: "+str(last_action_num)+" | FLG: "+str(posodica_flag)+" | BWL: "+str(start_frame_pokrivanja_bowla)+" | A: "+action+" | LA: "+last_action+" | ZG: "+str(len(zgodovina)))
