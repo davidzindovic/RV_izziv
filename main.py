@@ -131,7 +131,7 @@ def get_video_frame(video_path, frame_number):
     if not cap.isOpened():
         if debug_video==1:
             print(f"Error: Could not open video file {video_path}")
-        return None
+        return None, None
     
     total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
     
@@ -139,18 +139,18 @@ def get_video_frame(video_path, frame_number):
         if debug_video==1:
             print(f"Error: Frame {frame_number} is out of range (0-{total_frames-1})")
         cap.release()
-        return None
+        return None, None
     
     cap.set(cv.CAP_PROP_POS_FRAMES, frame_number)
     ret, frame = cap.read()
     cap.release()
     
     if ret:
-        return cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        return cv.cvtColor(frame, cv.COLOR_BGR2RGB),total_frames
     else:
         if debug_video==1:
             print(f"Error: Could not read frame {frame_number}")
-        return None
+        return None, None
 
 # funkcija za zaznavanje osvetljenih lukenj za pine (krogci):
 def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_results=True, circularity_threshold=0.7, max_contour_gap=10):
@@ -1175,11 +1175,14 @@ if __name__ == "__main__":
     pin_in_bowl_data_flag=True
     number_of_pins_in_bowl_ago=0
     number_of_pins_in_bowl_ago_ago=0
-    bowl_factor=3500/9 # "površina" enega pina
+    bowl_factor_osnova=3500/9
+    bowl_factor=0 # "površina" enega pina
     zeljeno_stevilo_bowl_pinov=9 # koliko pinov pričakujemo kot naslednji pravilni odgovor
     zeljeno_stevilo_tracker=0   # spremenljivka za spremljanje koliko frameov smo imeli željeno število pinov v bowlu
     trenutno_stevilo_pinov_v_bowlu=0 # potrjeno število pinov
     current_state="ni roka"
+
+    actual_dolzina_videja=0
 
     action_assigned=False
     action_start_frame=0
@@ -1191,9 +1194,15 @@ if __name__ == "__main__":
     while video!="stop":
     
         #shranimo sliki iz obeh kamer izbranega poskusa:
-        slika = get_video_frame(ime_videja, frame+1)
-        slika_2 = get_video_frame(ime_videja_2, frame+1)
+        slika,dolzina_videja = get_video_frame(ime_videja, frame+1)
+        slika_2,dolzina_videja_2 = get_video_frame(ime_videja_2, frame+1)
         
+        if dolzina_videja is not None and dolzina_videja_2 is not None:
+            if dolzina_videja>dolzina_videja_2:
+                actual_dolzina_videja=dolzina_videja_2
+            elif dolzina_videja<=dolzina_videja_2:
+                actual_dolzina_videja=dolzina_videja
+
         if debug_prikazi_vsak_frame==1:
             cv.imshow(slika)
             cv.imshow(slika_2)
@@ -1389,7 +1398,7 @@ if __name__ == "__main__":
                     
                     #-------------------------------------------------------------------------------
                     #izločanje najdenih pinov v bowlu:
-                    
+                    """
                     posodica_pod_roko_copy=posodica_pod_roko.copy()
                     stevilo_izlocenih=0
                     #print(posodica_pod_roko)
@@ -1408,7 +1417,7 @@ if __name__ == "__main__":
                         #print("______")
                     #print("število pinov: "+str(len(posodica_pod_roko))+", skupna površina: "+str(skupna_povrsina))
                     #print("Torej v posodici je: "+str(math.floor(skupna_povrsina/(5000/9))))
-                    
+                    """
                     #------------------------število pinov v bowlu glede na število črnih pikslov---------------------------
                     #               to do: dinamična površina max 3500->____
                     num_crni_piksli_bowl=0
@@ -1419,14 +1428,14 @@ if __name__ == "__main__":
                             if razdalja_centr_bowl_pin<radij_bowla and main_thr[y_coord][x_coord]==0:
                                 num_crni_piksli_bowl+=1
                                 #cv.circle(main_thr, (y_coord, x_coord), 1, (0, 0, 255), 1)
-                    stevilo_pinov_v_bowlu=math.floor(num_crni_piksli_bowl/bowl_factor)
+                    stevilo_pinov_v_bowlu=math.floor(num_crni_piksli_bowl/(bowl_factor_osnova+bowl_factor*35))
 
                     # če jih ne najde 9 ampak se prikaže roka v napoto -> sprememba last action in željenega št pinov
-                    if zeljeno_stevilo_bowl_pinov==9 and stevilo_pinov_v_bowlu>10:
+                    if zeljeno_stevilo_bowl_pinov==9 and stevilo_pinov_v_bowlu>10 and action=="vstavljanje":
                         zeljeno_stevilo_bowl_pinov-=1
                         print("roka na startu. Frame:"+str(frame))
 
-                    if stevilo_pinov_v_bowlu<10:
+                    if stevilo_pinov_v_bowlu<10 and action=="vstavljanje":
                         if zeljeno_stevilo_bowl_pinov==stevilo_pinov_v_bowlu:
                             zeljeno_stevilo_tracker+=1
                             if zeljeno_stevilo_tracker==3:
@@ -1437,24 +1446,34 @@ if __name__ == "__main__":
                                     continue
 
                                 if trenutno_stevilo_pinov_v_bowlu<5 and action=="vstavljanje":
-                                    bowl_factor-=35
-                                elif stevilo_pinov_v_bowlu<5 and action=="odvzemanje":
-                                    bowl_factor+=35
+                                    bowl_factor-=1
+                                #elif stevilo_pinov_v_bowlu<5 and action=="odvzemanje":
+                                #    bowl_factor+=1
 
                                 if action=="vstavljanje" and trenutno_stevilo_pinov_v_bowlu>0:
                                     zeljeno_stevilo_bowl_pinov-=1
-                                elif action=="odvzemanje" and trenutno_stevilo_pinov_v_bowlu<9:
-                                    zeljeno_stevilo_bowl_pinov+=1
+                                #elif action=="odvzemanje" and trenutno_stevilo_pinov_v_bowlu<9:
+                                #    zeljeno_stevilo_bowl_pinov+=1
                                 
                                 print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
                     if action=="odvzemanje":
                         if stevilo_pinov_v_bowlu>10 and current_state=="ni roka":
                             current_state="roka"
-                            trenutno_stevilo_pinov_v_bowlu+=1
-                            print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                            if trenutno_stevilo_pinov_v_bowlu<9:
+                                trenutno_stevilo_pinov_v_bowlu+=1
+                                if trenutno_stevilo_pinov_v_bowlu<5:
+                                    bowl_factor+=1
+                                zeljeno_stevilo_bowl_pinov+=1
+                                print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                        if stevilo_pinov_v_bowlu<10 and current_state=="roka":
+                            current_state="ni roka"
+                    elif action=="vstavljanje":
+                        if stevilo_pinov_v_bowlu>10 and current_state=="ni roka":
+                            current_state="roka"
                         if stevilo_pinov_v_bowlu<10 and current_state=="roka":
                             current_state="ni roka"
                         #print("Odvzemanje: "+current_state)
+                    stevilo_objektov_v_posodici=trenutno_stevilo_pinov_v_bowlu
                     """
                     if stevilo_pinov_v_bowlu<10:
                         if stevilo_pinov_v_bowlu<number_of_pins_in_bowl_ago and number_of_pins_in_bowl_ago<=5 and stevilo_pinov_v_bowlu<5 and action=="vstavljanje":
@@ -1631,6 +1650,10 @@ if __name__ == "__main__":
                             if action_end_frame<action_start_frame:
                                 action_end_frame=action_start_frame
 
+                            if pin_count==0 and trenutno_stevilo_pinov_v_bowlu==9:#ce ni pinov vec v 3x3 gridu
+                                action_end_frame=actual_dolzina_videja
+                                print("Actual dolzina: "+str(actual_dolzina_videja)+". Frame: "+str(frame))
+
                             zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
                             last_action_num=4
 
@@ -1640,8 +1663,9 @@ if __name__ == "__main__":
                             action_end_frame=frame
                             if action_end_frame<action_start_frame:
                                 action_end_frame=action_start_frame
-
-                            zgodovina.append([last_action,action_start_frame,action_end_frame])
+                            
+                            if pin_count!=0:
+                                zgodovina.append([last_action,action_start_frame,action_end_frame])
                             last_action_num=1
 
                             last_action_frame=action_end_frame
@@ -1658,7 +1682,8 @@ if __name__ == "__main__":
                     sprememba=0
 
                     # logika za stevilo objekov v posodici
-                    stevilo_objektov_v_posodici=len(posodica_pod_roko)
+                    #stevilo_objektov_v_posodici=len(posodica_pod_roko)
+                    """
                     if stevilo_objektov_v_posodici>9:
                         stevilo_objektov_v_posodici=9
                     
@@ -1687,22 +1712,28 @@ if __name__ == "__main__":
                         avrg_posodica_backup=1
                         if debug_bowl==1:
                             print("V posodi je: "+str(stevilo_objektov_v_posodici_max)+"pinov (po povprečenju).")
-
-                    if debug_akcije==1:
-                        print("RN: "+str(stevilo_objektov_v_posodici)+" | TMP: "+str(stevilo_objektov_v_posodici_max_tmp)+" | MAX: "+str(stevilo_objektov_v_posodici_max)+" | FRAME: "+str(frame)+" | LN: "+str(last_action_num)+" | FLG: "+str(posodica_flag)+" | BWL: "+str(start_frame_pokrivanja_bowla)+" | A: "+action+" | LA: "+last_action+" | ZG: "+str(len(zgodovina)))
+                    """
+                    #if debug_akcije==1:
+                    #    print("RN: "+str(stevilo_objektov_v_posodici)+" | TMP: "+str(stevilo_objektov_v_posodici_max_tmp)+" | MAX: "+str(stevilo_objektov_v_posodici_max)+" | FRAME: "+str(frame)+" | LN: "+str(last_action_num)+" | FLG: "+str(posodica_flag)+" | BWL: "+str(start_frame_pokrivanja_bowla)+" | A: "+action+" | LA: "+last_action+" | ZG: "+str(len(zgodovina)))
                     
                     # Logika za pokrivanje bowla z roko: če je zabeleženo št objektov v posodici večje od trenutnega, akcija je je bilo nazadnje odlaganje, če ne pokrivamo že
-                    if  stevilo_objektov_v_posodici_max>stevilo_objektov_v_posodici and (last_action_num==3 or len(zgodovina)==0) and posodica_flag==False and start_frame_pokrivanja_bowla==0 : #and ((last_action=="odlaganje_pina" and action=="vstavljanje")or(last_action=="prijemanje_pina" and action=="odvzemanje")or(len(zgodovina)==0))
-                        posodica_flag=True
+                    #if  stevilo_objektov_v_posodici_max>stevilo_objektov_v_posodici and (last_action_num==3 or len(zgodovina)==0) and posodica_flag==False and start_frame_pokrivanja_bowla==0 : #and ((last_action=="odlaganje_pina" and action=="vstavljanje")or(last_action=="prijemanje_pina" and action=="odvzemanje")or(len(zgodovina)==0))
+                    #    posodica_flag=True
+                    #    start_frame_pokrivanja_bowla=frame
+
+                    if current_state=="roka" and start_frame_pokrivanja_bowla==0:
                         start_frame_pokrivanja_bowla=frame
 
+                    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Najdeno: "+str(stevilo_pinov_v_bowlu)+" pinov. Frame: "+str(frame)+" . Stanje roke: "+str(current_state)+" . Action: "+action+". Bowl factor: "+str(bowl_factor)+" .Start: "+str(start_frame_pokrivanja_bowla)+" , konec: "+str(stop_frame_pokrivanja_bowla))
+
                     # če odkrijemo da je trenutno več objektov v posodici kot smo si zapomnili (medtem ko je bila pokrita nižje povprečje) in če smo že začeli štopati:
-                    if stevilo_objektov_v_posodici_max<stevilo_objektov_v_posodici and start_frame_pokrivanja_bowla!=0:
+                    #if stevilo_objektov_v_posodici_max<stevilo_objektov_v_posodici and start_frame_pokrivanja_bowla!=0:
+                    if current_state=="ni roka" and start_frame_pokrivanja_bowla!=0:
                         stop_frame_pokrivanja_bowla=frame
                         if (stop_frame_pokrivanja_bowla-start_frame_pokrivanja_bowla)>1:
                             if debug==1:
                                 print("roka pokriva bowl! start frame: "+str(start_frame_pokrivanja_bowla)+", stop frame: "+str(stop_frame_pokrivanja_bowla))
-
+                            print("Gruntam: start frame: "+str(start_frame_pokrivanja_bowla)+", stop frame: "+str(stop_frame_pokrivanja_bowla))
                             # za začetek videja:
                             if len(zgodovina)==0 and action_assigned==False:
 
@@ -1729,7 +1760,13 @@ if __name__ == "__main__":
 
                                 last_action_frame=action_end_frame
                                 last_action="prijemanje_pina"
-                                
+                            
+                            elif action=="odvzemanje" and len(zgodovina)!=0 and trenutno_stevilo_pinov_v_bowlu==9:
+                                action="konec"
+                                zgodovina.append(["prazna_roka",stop_frame_pokrivanja_bowla,actual_dolzina_videja])
+                                #print("AAAAAAAAAAAAAAAA")
+                                action_assigned=True
+
                             elif action=="odvzemanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
 
                                 action_start_frame=last_action_frame+1
@@ -1769,7 +1806,7 @@ if __name__ == "__main__":
                         else:
                             stop_frame_pokrivanja_bowla=0
                             start_frame_pokrivanja_bowla=0
-                        posodica_flag=True
+                        #posodica_flag=True
                     
                     if pin_count==9 and action=="vstavljanje":
                         if debug_sprotno_stanje==1:
@@ -1778,7 +1815,7 @@ if __name__ == "__main__":
                     elif pin_count==0 and action=="odvzemanje" and len(pin_centers_spodaj)==0:
                         if debug_sprotno_stanje==1:
                             print("Vsi pini so bili pobrani, frame: "+str(frame))
-                        action="konec"
+                        #action="konec"
                     elif action=="konec":
                         if debug_sprotno_stanje==1:
                             print("konec, frame: "+str(frame))
