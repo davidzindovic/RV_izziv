@@ -21,6 +21,7 @@ import config_izziv_main
 #5. ponvaljaj korake 2-4
 
 #todo: zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
+#      uredi luknje v anotaciji (NUJNO), preveri dogajanje v zadnjih framih (NUJNO)
 
 #----------------iz configa--------------
 debug_prikaz=config_izziv_main.debug_prikaz           
