@@ -1,0 +1,10 @@
+Required python libraries:
+- opencv
+- numpy
+- matplotlib
+- collections
+- math
+- json
+
+Required python files:
+- config_izziv_main
