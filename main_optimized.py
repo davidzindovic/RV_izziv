@@ -103,16 +103,17 @@ slika_2_height=0
 
 # funkcija za pridobitev slike iz videja na podlagi številke frame-a:
 def get_video_frame(video_path, frame_number):
-    """(Previous implementation remains the same)"""
+    """
+    Gets a single frame from a video and passes it on as an image.
     
-    #PC doma:
-    #video_dir = 'C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'
-    
-    #Laptop šola:
-    #video_dir = 'C:\\Users\\Vegova\\Documents\\zindo\\'
-    
-    #Laptop osebni:
-    #video_dir = 'C:\\Users\\david\\Desktop\\izziv main\\'
+    Args:
+        video_path: the path to the video
+        frame_numer: number of the frame
+        
+    Returns:
+        image: image of the chosen frame
+        total_frames: the length of the video (in frames)
+    """
     
     video_dir=path_do_videjev
 
@@ -137,7 +138,8 @@ def get_video_frame(video_path, frame_number):
     cap.release()
     
     if ret:
-        return cv.cvtColor(frame, cv.COLOR_BGR2RGB),total_frames
+        image=cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        return image,total_frames
     else:
         if debug_video==1:
             print(f"Error: Could not read frame {frame_number}")
@@ -228,7 +230,22 @@ def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_res
 
 # funkcija za določanje oblike objektov v sliki 
 # (pini, pini v bowlu iz enega/drugega pogleda):
-def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, canny_low=100, canny_high=120):
+def detect_shapes(image, region_of_interest=None, canny_low=100, canny_high=120):
+    """
+    Zazna oblike na podlagi kontur. Prvotno mišljena za zaznavanje vseh objektov, vendar so se parametri
+    izkazali ugodni le za iskanje pinov v 3x3 mreži lukenj.
+    
+    Args:
+        image: slika, na kateri želimo iskati oblike
+        region_of_interest: območje na sliki, znotraj katerega želimo iskati oblike
+        canny_low: spodnja meja za Canny algoritem za detekcijo robov
+        canny_high: zgornja meja za Canny algoritem za detekcijo robov
+
+    Returns:
+        pins_centers: Središča najdenih objektov (pinov v 3x3 mreži lukenj)
+        shapes: Podrobne informacije (parametri kot so aspect ratio ipd.) najdene oblike
+        (x, y, w, h): touple, ki hrani podatke območja, znotraj katerega smo iskali (x in y začetne točke, w=širina,h=višina)
+    """
 
     if image is None or image.size == 0:
         print("Error: Invalid image input")
@@ -244,9 +261,7 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     gray = cv.cvtColor(roi, cv.COLOR_BGR2GRAY)
 
     blurred = cv.GaussianBlur(gray, (3, 3), 2)
-    #edges = cv.Canny(blurred, 80, 160, apertureSize=3)
 
-    #blurred = cv.GaussianBlur(gray, (5, 5), 0)
     edges = cv.Canny(blurred, canny_low, canny_high,apertureSize=3)
     
     # dodano iz interneta za odebelitev robov/omogočanje lažjega iskanja zaprtih kontur
@@ -258,20 +273,15 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
     #ZADNJI PARAMETER:CHAIN_APPROX_NONE, CHAIN_APPROX_SIMPLE ,CHAIN_APPROX_TC89_L1 CHAIN_APPROX_TC89_KCOS 
     
     shapes = {
-        'small_circles': [],
-        'big_circles': [],
-        'pins': [],
-        'pin_in_bowl': [],
-        'pin_in_bowl_2': [],
-        'trapezoids': []
+        'pins': []
     }
     
     pins_centers=[]
-    #pins_in_bowl_centers=[]
-    #pins_in_bowl_2_centers=[]
+
     for contour in contours:
         area = cv.contourArea(contour)
-        if area < min_area or area > max_area:
+        #if area < min_area or area > max_area:
+        if 90 > area and area> 170:
             continue
             
         perimeter = cv.arcLength(contour, True)
@@ -322,7 +332,7 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
 
         
         # Prepoznavanje oblik glede na pogoje:
-        if (aspect_ratio > 1 and aspect_ratio<3 and 90 < area < 170 and circularity>0.3):
+        if (aspect_ratio > 1 and aspect_ratio<3 and circularity>0.3):#90 < area < 170
             shapes['pins'].append(shape_info)
             pins_centers.append([abs_cx,abs_cy])
             if debug_pins:
@@ -335,7 +345,15 @@ def detect_shapes(image, region_of_interest=None, min_area=100, max_area=10000, 
 
 # funkcija za določanje barve pina:
 def classify_color(hsv_values):
-    """Classifies color based on HSV values"""
+    """
+    Zazna barvo na podlagi HSV vrednosti.
+    
+    Args:
+        hsv_values: HSV vrednosti pina    
+    
+    Returns:
+        barva v obliki besede (string) 
+    """
     hue, sat, val = hsv_values
     if val < 30: return "black"
     elif sat < 50:
@@ -351,6 +369,22 @@ def classify_color(hsv_values):
     return "red"
 
 def get_transformacijska_matrika(image):
+    """
+    Pod transformacijsko matriko na podlagi spremembe pozicije ali orientacije glavne plošče
+    
+    Args:
+        image: slika, na kateri želimo iskati oblike
+        region_of_interest: območje na sliki, znotraj katerega želimo iskati oblike
+        canny_low: spodnja meja za Canny algoritem za detekcijo robov
+        canny_high: zgornja meja za Canny algoritem za detekcijo robov
+
+        pins_centers,shapes, (x, y, w, h)
+    Returns:
+        pins_centers: Središča najdenih objektov (pinov v 3x3 mreži lukenj)
+        shapes: Podrobne informacije (parametri kot so aspect ratio ipd.) najdene oblike
+        (x, y, w, h): touple, ki hrani podatke območja, znotraj katerega smo iskali (x in y začetne točke, w=širina,h=višina)
+    """
+
     slika_rob=image.copy()
     #roi = (150, 50, 200, 400)
     x0=150
