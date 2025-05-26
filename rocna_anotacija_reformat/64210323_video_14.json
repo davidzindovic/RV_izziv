@@ -1,0 +1,381 @@
+{
+    "video_name": "64210323_video_14.mp4",
+    "annotations": [
+		{
+            "frame_start": 1,
+            "frame_stop": 58,
+            "event": ["prazna_roka"]
+        },
+        {
+            "frame_start": 59,
+            "frame_stop": 71,
+            "event": ["prijemanje_pina"]
+        },
+        {
+            "frame_start": 72,
+            "frame_stop": 79,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 80,
+            "frame_stop": 89,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 90,
+            "frame_stop": 96,
+            "event": ["prazna_roka"]
+        },
+        {
+            "frame_start": 97,
+            "frame_stop": 117,
+            "event": ["prijemanje_pina"]
+        },
+        {
+            "frame_start": 118,
+            "frame_stop": 125,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 125,
+            "frame_stop": 140,
+            "event": ["odlaganje_pina"]
+        },
+        {
+            "frame_start": 141,
+            "frame_stop": 145,
+            "event": ["prazna_roka"]
+        },
+        {
+            "frame_start": 146,
+            "frame_stop": 161,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 157,
+            "frame_stop": 172,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 173,
+            "frame_stop": 188,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 189,
+            "frame_stop": 194,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 195,
+            "frame_stop": 210,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 211,
+            "frame_stop": 215,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 216,
+            "frame_stop": 233,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 234,
+            "frame_stop": 235,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 236,
+            "frame_stop": 250,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 251,
+            "frame_stop": 257,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 258,
+            "frame_stop": 269,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 270,
+            "frame_stop": 275,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 276,
+            "frame_stop": 296,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 288,
+            "frame_stop": 303,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 304,
+            "frame_stop": 330,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 331,
+            "frame_stop": 335,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 336,
+            "frame_stop": 356,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 357,
+            "frame_stop": 361,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 362,
+            "frame_stop": 377,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 378,
+            "frame_stop": 384,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 385,
+            "frame_stop": 394,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 395,
+            "frame_stop": 400,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 401,
+            "frame_stop": 419,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 420,
+            "frame_stop": 425,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 426,
+            "frame_stop": 439,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 440,
+            "frame_stop": 445,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 446,
+            "frame_stop": 458,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 459,
+            "frame_stop": 464,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 465,
+            "frame_stop": 477,
+            "event": ["prijemanje_pina"]
+		},
+        {
+            "frame_start": 478,
+            "frame_stop": 486,
+            "event": ["prenos_pina"]
+        },
+        {
+            "frame_start": 487,
+            "frame_stop": 509,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 510,
+            "frame_stop": 521,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 522,
+            "frame_stop": 535,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 536,
+            "frame_stop": 539,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 540,
+            "frame_stop": 540,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 541,
+            "frame_stop": 541,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 542,
+            "frame_stop": 542,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 543,
+            "frame_stop": 543,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 544,
+            "frame_stop": 544,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 545,
+            "frame_stop": 548,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 549,
+            "frame_stop": 549,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 550,
+            "frame_stop": 554,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 555,
+            "frame_stop": 559,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 560,
+            "frame_stop": 567,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 568,
+            "frame_stop": 568,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 569,
+            "frame_stop": 573,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 574,
+            "frame_stop": 580,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 581,
+            "frame_stop": 588,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 589,
+            "frame_stop": 589,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 590,
+            "frame_stop": 593,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 594,
+            "frame_stop": 600,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 601,
+            "frame_stop": 608,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 609,
+            "frame_stop": 609,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 610,
+            "frame_stop": 613,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 614,
+            "frame_stop": 620,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 621,
+            "frame_stop": 627,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 628,
+            "frame_stop": 628,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 629,
+            "frame_stop": 632,
+            "event": ["prazna_roka"]
+        },
+		{
+            "frame_start": 633,
+            "frame_stop": 639,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 640,
+            "frame_stop": 646,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 647,
+            "frame_stop": 647,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 648,
+            "frame_stop": 654,
+            "event": ["prazna_roka"]
+        },
+		{
+			"frame_start": 655,
+            "frame_stop": 657,
+            "event": ["prijemanje_pina"]
+		},
+		{
+            "frame_start": 658,
+            "frame_stop": 667,
+            "event": ["prenos_pina"]
+        },
+		{
+            "frame_start": 668,
+            "frame_stop": 668,
+            "event": ["odlaganje_pina"]
+        },
+		{
+            "frame_start": 669,
+            "frame_stop": 683,
+            "event": ["prazna_roka"]
+        }
+    ]
+
+}
