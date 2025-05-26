@@ -102,6 +102,7 @@ center_bowla_blizje_kameri=[]
 slika_height=0
 slika_2_height=0
 
+
 # funkcija za pridobitev slike iz videja na podlagi številke frame-a:
 def get_video_frame(video_path, frame_number):
     """
@@ -116,9 +117,10 @@ def get_video_frame(video_path, frame_number):
         total_frames: the length of the video (in frames)
     """
     
-    video_dir=path_do_videjev
+    #video_dir=path_do_videjev
 
-    video_path = video_dir + video_path + ".mp4"
+    #video_path = video_dir + video_path + ".mp4"
+
     cap = cv.VideoCapture(video_path)
     
     if not cap.isOpened():
@@ -165,6 +167,8 @@ def detect_bright_objects(image, brightness_threshold=230, min_area=50, show_res
         numpy.ndarray: Thresholded image
         numpy.ndarray: Edge detection result
     """
+    global prikazi_vmesne_korake
+
     # Convert to grayscale
     gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
     
@@ -446,8 +450,8 @@ def get_transformacijska_matrika(image):
 # Funkcija za iskanje transformacijske matrike potrebne zaradi
 # premika main boarda (za preslikavo točk 3x3 grida)
 def sprememba_robov(image):#transf matrika overkil? sort?
+    global debug_robovi_kvadra
     global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
-
 
     repack_old_robovi_povp=[]
     repack_robovi_povp=[]
@@ -714,6 +718,8 @@ def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=
         str: 'top' if more objects in top region, 'bottom' if more in bottom region, 
              'equal' if counts are equal, or 'none' if no objects detected
     """
+    global prikazi_vmesne_korake
+
     if not shapes or all(len(v) == 0 for v in shapes.values()):
         return 'none'
     
@@ -766,7 +772,6 @@ def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=
         cv.waitKey(0)
         cv.destroyAllWindows()
     
-
     return result
 
 # funkcija za vpis anotacije v json datoteko:
@@ -794,7 +799,7 @@ def create_annotation_json(filename, annotations_array):
         data["annotations"].append({
             "frame_start": frame_start,
             "frame_stop": frame_stop,
-            "event": event
+            "event": [event]
         })
     
     # Create the filename with .json extension
@@ -1055,8 +1060,10 @@ def primerjava_change_eventov(fresh_json,correct_json):
     file_generiran.close()
     file_pravilen.close()
             
-if __name__ == "__main__":
-
+def main_optimized(video1,video2):
+    global last_action, last_action_num, prikazi_vmesne_korake, razporedi_centre_lukenj, premaknjen_board, num_pins_hypo
+    
+    #-----------------------------
     radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
 
     setup=0           # spremenljivka za setup - opravljanje kalibracije s pomočjo lučk v luknjah
@@ -1126,8 +1133,10 @@ if __name__ == "__main__":
     while video!="stop":
     
         #shranimo sliki iz obeh kamer izbranega poskusa:
-        slika,dolzina_videja = get_video_frame(ime_videja, frame+1)
-        slika_2,dolzina_videja_2 = get_video_frame(ime_videja_2, frame+1)
+        #slika,dolzina_videja = get_video_frame(ime_videja, frame+1)
+        #slika_2,dolzina_videja_2 = get_video_frame(ime_videja_2, frame+1)
+        slika,dolzina_videja = get_video_frame(video1, frame+1)
+        slika_2,dolzina_videja_2 = get_video_frame(video2, frame+1)
         
         if dolzina_videja is not None and dolzina_videja_2 is not None:
             if dolzina_videja>dolzina_videja_2:
@@ -1174,6 +1183,7 @@ if __name__ == "__main__":
                 po_thr_2=detect_dark_objects(slika_2)
                 pin_in_bowl_data_flag=False
 
+            #POMEMBNO
             # preizkusi kaj se zgodi če je roka nad boardom
             tr_mat=get_transformacijska_matrika(slika)
             tr_mat_2=get_transformacijska_matrika(slika_2)
@@ -1204,17 +1214,14 @@ if __name__ == "__main__":
                 # Ko najdemo središča lukenj, lahko določimo kje ima
                 # katera kamera ima 3x3 grid na spodnji/zgornji strani
                 if setup==1 or setup==0:
-                    #stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
-                    #stran_lukenj_2 = detect_object_position_bias(image_bgr_2, shapes_2, show_result=True)
 
-                    #TESTIRAJ:
                     #določanje na kateri polovici slike so luknje
                     vsota_y=0
                     vsota_y_2=0
                     for s in centers:
-                        vsota_y+=s
+                        vsota_y+=s[1]
                     for s_2 in centers_2:
-                        vsota_y_2+=s_2
+                        vsota_y_2+=s_2[1]
                     
                     if vsota_y>vsota_y_2:
                         stran_lukenj="spodaj"
@@ -1536,8 +1543,7 @@ if __name__ == "__main__":
                     if current_state=="roka" and start_frame_pokrivanja_bowla==0:
                         start_frame_pokrivanja_bowla=frame
 
-                    #if debug_bowl==1:
-                    if True:
+                    if debug_bowl==1:
                         print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Najdeno: "+str(stevilo_pinov_v_bowlu)+" pinov. Frame: "+str(frame)+" . Stanje roke: "+str(current_state)+" . Action: "+action+". Last action number: "+str(last_action_num)+". Bowl factor: "+str(bowl_factor)+" .Start: "+str(start_frame_pokrivanja_bowla)+" , konec: "+str(stop_frame_pokrivanja_bowla))
 
                     if current_state=="ni roka" and start_frame_pokrivanja_bowla!=0:
@@ -1658,3 +1664,6 @@ if __name__ == "__main__":
     if debug_primerjava_anotacij==1:
         primerjava_anotacij(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
         primerjava_anotacij(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
+
+if __name__ == "__main__":
+    main_optimized()
