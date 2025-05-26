@@ -21,7 +21,8 @@ import config_izziv_main
 #5. ponvaljaj korake 2-4
 
 #todo: zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
-#      uredi luknje v anotaciji (NUJNO), preveri dogajanje v zadnjih framih (NUJNO)
+#       preveri dogajanje v zadnjih framih (NUJNO)
+#      uredi da bias funkcija deluje na podlagi shapes namesto na podlagi centrov lukenj za pine
 
 #----------------iz configa--------------
 debug_prikaz=config_izziv_main.debug_prikaz           
@@ -566,6 +567,16 @@ def sprememba_robov(image):#transf matrika overkil? sort?
 
 # Funkcija za iskanje pinov v bowlu
 def detect_dark_objects(image):
+    """
+    Pripravi vhodno sliko za zaznavanje pinov v bowlu z upragovljanjem.
+    
+    Args:
+        image: slika, ki jo želimo pripraviti
+    
+    Returns:
+        thresh_og: črno bela slika, ki je rezultat upragovljanja +
+    """
+    
     # Read the image
     og=image.copy()
     if og is None:
@@ -593,7 +604,18 @@ def detect_dark_objects(image):
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
     """
-    Enhanced visualization with separate area display boxes
+    Vizualizira podane oblike.
+    
+    Args:
+        slika:      slika, na kateri želimo prikazati oblike
+        shapes:     seznam oblik
+        roi_rect:   območje interesa, ki ga lahko prikažemo
+                    da vemo znotraj katerega območja smo
+                    našli oblike
+    
+    Returns:
+        display:    originalna slika, ki ima čez narisane 
+                    zaznane oblike
     """
     display = slika.copy()
     
@@ -678,11 +700,13 @@ def visualize_detection(slika, shapes, roi_rect=None):
 # slike 3x3 grid lukenj za pine:
 def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=False):
     """
-    Determines if there are more detected objects towards the bottom or top of the image.
+    Funkcija za zaznavanje, na kateri polovici slike (zgornji ali spodnji) je 3x3 mreža
+    lukenj za pine. Po želji lahko zaznane podatke prikažemo. S pomočjo rezultatov te funkcije
+    določimo kasneje, kateri kameri je bližje mreža 3x3 lukenj in kateri posodica s pini
     
     Args:
-        image: Input image (used only for visualization if show_result=True)
-        shapes: Dictionary of detected shapes (output from detect_shapes function)
+        image: vhodna slika (ki jo uporabimo za opcijski prikaz)
+        shapes: Zaznane oblike
         threshold_ratio: Ratio of image height to consider as top/bottom regions (default 1/3)
         show_result: Whether to display visualization of the regions and counts
     
@@ -783,6 +807,24 @@ def create_annotation_json(filename, annotations_array):
     return json_filename
 
 def luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
+    """
+    Funkcija za pravilno razporejanje lukenj za pine, da bodo razporejene
+    pravilno (gledano iz posamezne kamere)
+    
+    Args:
+        centers_spodaj_temp:    središča lukenj za pine, gledano iz kamere ki
+                                ima 3x3 mrežo lukenj na spodnji polovici slike
+        centers_zgoraj_temp:    središča lukenj za pine, gledano iz kamere ki
+                                ima 3x3 mrežo lukenj na zgornji polovici slike
+    
+    Returns:
+        centers_spodaj_final:   urejena tabela središč lukenj za pine, 
+                                gledano iz kamere ki ima 3x3 mrežo lukenj na 
+                                spodnji polovici slike
+        centers_zgoraj_final:   urejena tabela središč lukenj za pine, 
+                                gledano iz kamere ki ima 3x3 mrežo lukenj na 
+                                zgornji polovici slike 
+    """
 
     # sortiranje sredinskih točk lukenj za pine:
     centers_spodaj_temp.sort()
@@ -1150,15 +1192,11 @@ if __name__ == "__main__":
                 # Detect shapes within ROI
                 pin_centers,shapes, roi_rect, edges = detect_shapes(image_bgr, 
                                                     region_of_interest=roi,
-                                                    min_area=min_area,
-                                                    max_area=max_area,
                                                     canny_low=canny_low,
                                                     canny_high=canny_high)
                 
                 pin_centers_2,shapes_2, roi_rect_2, edges_2 = detect_shapes(image_bgr_2, 
                                                     region_of_interest=roi,
-                                                    min_area=min_area,
-                                                    max_area=max_area,
                                                     canny_low=canny_low,
                                                     canny_high=canny_high)
 
@@ -1166,8 +1204,25 @@ if __name__ == "__main__":
                 # Ko najdemo središča lukenj, lahko določimo kje ima
                 # katera kamera ima 3x3 grid na spodnji/zgornji strani
                 if setup==1 or setup==0:
-                    stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
-                    stran_lukenj_2 = detect_object_position_bias(image_bgr_2, shapes_2, show_result=True)
+                    #stran_lukenj = detect_object_position_bias(image_bgr, shapes, show_result=True)
+                    #stran_lukenj_2 = detect_object_position_bias(image_bgr_2, shapes_2, show_result=True)
+
+                    #TESTIRAJ:
+                    #določanje na kateri polovici slike so luknje
+                    vsota_y=0
+                    vsota_y_2=0
+                    for s in centers:
+                        vsota_y+=s
+                    for s_2 in centers_2:
+                        vsota_y_2+=s_2
+                    
+                    if vsota_y>vsota_y_2:
+                        stran_lukenj="spodaj"
+                        stran_lukenj_2="zgoraj"
+                    else:
+                        stran_lukenj="zgoraj"
+                        stran_lukenj_2="spodaj"
+                    # konec določanja
 
                     if stran_lukenj!='none'or stran_lukenj_2!='none':
                         setup=3
@@ -1282,8 +1337,8 @@ if __name__ == "__main__":
                                 if action=="vstavljanje" and trenutno_stevilo_pinov_v_bowlu>0:
                                     zeljeno_stevilo_bowl_pinov-=1
                                 
-                                if debug_bowl==1:
-                                    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                                #if debug_bowl==1:
+                                #    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
 
                     if action=="odvzemanje":
                         if stevilo_pinov_v_bowlu>10 and current_state=="ni roka":
@@ -1293,8 +1348,8 @@ if __name__ == "__main__":
                                 if trenutno_stevilo_pinov_v_bowlu<5:
                                     bowl_factor+=1
                                 zeljeno_stevilo_bowl_pinov+=1
-                                if debug_bowl==1:
-                                    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
+                                #if debug_bowl==1:
+                                #    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
 
                         if stevilo_pinov_v_bowlu<10 and current_state=="roka":
                             current_state="ni roka"
@@ -1438,7 +1493,7 @@ if __name__ == "__main__":
                                 print(inserted_pins_spodaj[cd])
                             print("-----------------")
 
-                        if action_assigned==False and len(zgodovina)!=0 and last_action_num==3:
+                        if action_assigned==False and len(zgodovina)!=0 and last_action_num==3 and trenutno_stevilo_pinov_v_bowlu!=9:
                             last_action="prijemanje_pina"
                             num_pins_hypo-=1
 
@@ -1481,8 +1536,9 @@ if __name__ == "__main__":
                     if current_state=="roka" and start_frame_pokrivanja_bowla==0:
                         start_frame_pokrivanja_bowla=frame
 
-                    if debug_bowl==1:
-                        print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Najdeno: "+str(stevilo_pinov_v_bowlu)+" pinov. Frame: "+str(frame)+" . Stanje roke: "+str(current_state)+" . Action: "+action+". Bowl factor: "+str(bowl_factor)+" .Start: "+str(start_frame_pokrivanja_bowla)+" , konec: "+str(stop_frame_pokrivanja_bowla))
+                    #if debug_bowl==1:
+                    if True:
+                        print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Najdeno: "+str(stevilo_pinov_v_bowlu)+" pinov. Frame: "+str(frame)+" . Stanje roke: "+str(current_state)+" . Action: "+action+". Last action number: "+str(last_action_num)+". Bowl factor: "+str(bowl_factor)+" .Start: "+str(start_frame_pokrivanja_bowla)+" , konec: "+str(stop_frame_pokrivanja_bowla))
 
                     if current_state=="ni roka" and start_frame_pokrivanja_bowla!=0:
                         stop_frame_pokrivanja_bowla=frame
@@ -1515,11 +1571,11 @@ if __name__ == "__main__":
                                 last_action_frame=action_end_frame
                                 last_action="prijemanje_pina"
                             
-                            elif action=="odvzemanje" and len(zgodovina)!=0 and trenutno_stevilo_pinov_v_bowlu==9:
-                                action="konec"
-                                zgodovina.append(["prazna_roka",stop_frame_pokrivanja_bowla,actual_dolzina_videja])
+                            #elif action=="odvzemanje" and len(zgodovina)!=0 and trenutno_stevilo_pinov_v_bowlu==9 and last_action_num==3:
+                            #    action="konec"
+                            #    zgodovina.append(["prazna_roka",stop_frame_pokrivanja_bowla,actual_dolzina_videja])
 
-                                action_assigned=True
+                            #    action_assigned=True        
 
                             elif action=="odvzemanje" and action_assigned==False and len(zgodovina)!=0 and last_action_num==1:
 
@@ -1561,6 +1617,12 @@ if __name__ == "__main__":
                             stop_frame_pokrivanja_bowla=0
                             start_frame_pokrivanja_bowla=0
                     
+                    if action=="odvzemanje" and len(zgodovina)!=0 and trenutno_stevilo_pinov_v_bowlu==9 and last_action_num==3:
+                        action="konec"
+                        zgodovina.append(["prazna_roka",action_end_frame+1,actual_dolzina_videja])
+
+                        action_assigned=True  
+                    
                     if pin_count==9 and action=="vstavljanje":
                         if debug_sprotno_stanje==1:
                             print("Vse pini so bili vstavljeni, frame: "+str(frame))
@@ -1573,6 +1635,8 @@ if __name__ == "__main__":
                     elif action=="konec":
                         if debug_sprotno_stanje==1:
                             print("konec, frame: "+str(frame))
+
+                    
 
             if debug_outlines==1 or debug_pins==1 or debug_sprotno_stanje==1 or debug_prikazi_vsak_frame==1 or debug_bowl==1:
                 cv.waitKey(0)
