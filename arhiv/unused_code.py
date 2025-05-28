@@ -1,5 +1,4 @@
-def zaznaj_roko(base_image, hand_image):
-    
+
 
 def get_transformacijska_matrika(image):
     """
