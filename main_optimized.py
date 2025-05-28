@@ -29,12 +29,9 @@ debug_pins=config_izziv_main.debug_pins
 debug_sprotno_stanje=config_izziv_main.debug_sprotno_stanje
 debug_video=config_izziv_main.debug_video
 debug_prikazi_vsak_frame=config_izziv_main.debug_prikazi_vsak_frame
-debug_confusion_matrix=config_izziv_main.debug_confusion_matrix
-debug_primerjava_anotacij=config_izziv_main.debug_primerjava_anotacij
-debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
-debug_iskanje_tr_mat=config_izziv_main.debug_iskanje_tr_mat
 debug_bowl=config_izziv_main.debug_bowl
 debug_visualization_text=config_izziv_main.debug_visualization_text
+debug_aktivna_roka=config_izziv_main.debug_aktivna_roka
 #----------------------------------------
 
 # seznam možnih stanj (informativno, neuporabljeno)
@@ -362,201 +359,7 @@ def classify_color(hsv_values):
     elif hue < 255: return "pink"
     return "red"
 
-def get_transformacijska_matrika(image):
-    """
-    Pod transformacijsko matriko na podlagi spremembe pozicije ali orientacije glavne plošče
-    
-    Args:
-        image: slika, na kateri želimo iskati oblike
-        region_of_interest: območje na sliki, znotraj katerega želimo iskati oblike
-        canny_low: spodnja meja za Canny algoritem za detekcijo robov
-        canny_high: zgornja meja za Canny algoritem za detekcijo robov
 
-        pins_centers,shapes, (x, y, w, h)
-    Returns:
-        pins_centers: Središča najdenih objektov (pinov v 3x3 mreži lukenj)
-        shapes: Podrobne informacije (parametri kot so aspect ratio ipd.) najdene oblike
-        (x, y, w, h): touple, ki hrani podatke območja, znotraj katerega smo iskali (x in y začetne točke, w=širina,h=višina)
-    """
-
-    slika_rob=image.copy()
-    #roi = (150, 50, 200, 400)
-    x0=150
-    y0=50
-    width=200
-    height=400
-    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-    _,thr=cv.threshold(gray,200,255,cv.THRESH_BINARY)
-    new_thr = thr[y0:y0+height, x0:x0+width].copy()
-    canny= cv.Canny(new_thr, 80, 160, apertureSize=3)
-
-
-    contours,_=cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
-
-    najmanjsa_povrsina=0
-    n_p_index=0
-    n_p_cnt=0
-    for c in contours:
-        #contours[n_p_cnt]=c + np.array([x0, y0])
-        area=cv.contourArea(c)
-        if area>najmanjsa_povrsina:
-            najmanjsa_povrsina=area
-            n_p_index=n_p_cnt
-        n_p_cnt+=1
-    
-    rotrect = cv.minAreaRect(contours[n_p_index]+ np.array([x0, y0]))
-    
-    box = cv.boxPoints(rotrect)
-    box = np.intp(box)
-    
-    sredisce_boarda=rotrect[0]
-    kot_rotacije=rotrect[2]
-
-    if debug_iskanje_tr_mat==1:
-        print ("Boarda ima središče v: "+str(sredisce_boarda)+", zarotiran je pa za: "+str(kot_rotacije))
-
-    # get center line from box
-    # note points are clockwise from bottom right
-    x1 = (box[0][0] + box[1][0]) // 2
-    y1 = (box[0][1] + box[1][1]) // 2
-    x2 = (box[2][0] + box[3][0]) // 2
-    y2 = (box[2][1] + box[3][1]) // 2
-
-    if debug_iskanje_tr_mat==1:
-        # draw rotated rectangle on copy of img as result
-        cv.drawContours(slika_rob, [box], 0, (0,0,255), 2)
-        cv.line(slika_rob, (x1,y1), (x2,y2), (255,0,0), 2)
-
-        cv.imshow("Sivinska v funk robov",gray)
-        #cv.imshow("Upragovljanje v funk robov",new_thr)
-        cv.imshow("Canny v funk robov",canny)
-        cv.imshow("Najden board v funk robov",slika_rob)
-
-        cv.waitKey(0)
-
-    return sredisce_boarda,kot_rotacije
-
-# Funkcija za iskanje transformacijske matrike potrebne zaradi
-# premika main boarda (za preslikavo točk 3x3 grida)
-def sprememba_robov(image):#transf matrika overkil? sort?
-    global debug_robovi_kvadra
-    global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
-
-    repack_old_robovi_povp=[]
-    repack_robovi_povp=[]
-    transformacijska_matrika=[]
-
-    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
-
-
-    blurred = cv.GaussianBlur(gray, (7, 7), 2)
-    edges = cv.Canny(blurred, 80, 160, apertureSize=3)
-    lines = cv.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=80, minLineLength=50, maxLineGap=60)
-
-    # Visualize raw lines (for debugging)
-    line_img = np.zeros_like(image)
-
-    local_list=[]
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        if x1>150 and x2<350 and y1>50 and y2<350:
-            cv.line(line_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            local_list.append([x1,y1,x2,y2])
-
-            """
-            if abs(x1-x2)<50 and abs(y1-y2)>100:
-                vert.append((x1,y1,x2,y2))
-                print("V angle: "+str(math.degrees(math.atan(abs((x2-x1)/(y2-y1))))))
-                cv.line(line_kvad, (x1, y1), (x2, y2), (0, 0, 255), 2)
-            if 200>abs(x1-x2)>100 and abs(y1-y2)<20:
-                hor.append((x1,y1,x2,y2))
-                print("H angle: "+str(math.degrees(math.atan(abs((y2-y1)/(x2-x1))))))
-                cv.line(line_kvad, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            """
-
-
-    robovi.append(local_list)
-
-    if debug_robovi_kvadra==1:
-        cv.imshow("Raw Hough Lines", line_img)  # Debug window
-        cv.waitKey(0)
-    num_za_povp_robov+=1
-    move_radius=5
-    max_frames_za_povp=3
-
-    if num_za_povp_robov==max_frames_za_povp:
-        num_za_povp_robov=0
-        robovi_povp=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
-        for st_zajema in range(len(robovi)):
-            for r in range((len(robovi[st_zajema]))):
-                for r_l in range(len(robovi[st_zajema][r])):
-                    for r_primerjava in range(len(robovi[st_zajema])):
-                        if r_primerjava!=r:
-                            for r_x in range(len(robovi[st_zajema][r_primerjava])):
-                                if (r_l==0 or r_l==2) and (r_x==0 or r_x==2) and r<len(robovi_povp):
-                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
-                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
-
-                                if (r_l==1 or r_l==3) and (r_x==1 or r_x==3) and r<len(robovi_povp):
-                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
-                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
-
-        for a in range(len(robovi_povp)):
-            for b in range(len(robovi_povp[a])):
-                robovi_povp[a][b]/=max_frames_za_povp
-        
-        cifra=0
-        old_vsota=0
-        for vsota_1 in range(len(old_robovi_povp)):
-            for vsota_2 in range(len(old_robovi_povp[vsota_1])):
-                old_vsota+=old_robovi_povp[vsota_1][vsota_2]
-                cifra+=1
-        old_vsota=old_vsota/cifra
-
-        cifra=0
-        vsota=0
-        for vsota_1 in range(len(robovi_povp)):
-            for vsota_2 in range(len(robovi_povp[vsota_1])):
-                vsota+=robovi_povp[vsota_1][vsota_2]
-                cifra+=1
-        vsota=vsota/cifra
-
-        if len(old_robovi_povp)>0 and old_vsota>0:
-            for re in range(len(old_robovi_povp)):
-                for re_index in range(int(len(old_robovi_povp[re])/2)):
-                    repack_old_robovi_povp.append([old_robovi_povp[re][2*re_index],old_robovi_povp[re][2*re_index+1]])
-            repack_old_robovi_povp=repack_old_robovi_povp[0:3]
-            repack_old_robovi_povp=np.array(repack_old_robovi_povp)
-            repack_old_robovi_povp=np.float32(repack_old_robovi_povp)
-
-        if len(robovi_povp)>0:
-            for re in range(len(robovi_povp)):
-                for re_index in range(int(len(robovi_povp[re])/2)):
-                    repack_robovi_povp.append([robovi_povp[re][2*re_index],robovi_povp[re][2*re_index+1]])
-            repack_robovi_povp=repack_robovi_povp[0:3]#točno 3 točke!
-            repack_robovi_povp=np.array(repack_robovi_povp)
-            repack_robovi_povp=np.float32(repack_robovi_povp)
-
-        #print("stevilo elementov: "+str(len(robovi_povp))+" | "+str(len(old_robovi_povp)))
-        #print("podatkovni tip:" +str(type(repack_old_robovi_povp))+" | "+str(type(repack_robovi_povp)))
-        if len(robovi_povp)==len(old_robovi_povp) and len(old_robovi_povp)>0 and old_vsota>0 and vsota>0:
-            transformacijska_matrika=cv.getAffineTransform(repack_old_robovi_povp,repack_robovi_povp)
-
-        old_robovi_povp=robovi_povp
-        robovi=[] 
-        if debug_robovi_kvadra==1:
-            print("Transformacijska matrika: ")
-            print(transformacijska_matrika)
-            print("Tocke robov prej:")
-            print(repack_old_robovi_povp)
-            print("tocke robov zdej:")
-            print(repack_robovi_povp)
-            print("----------------------")      
-        return transformacijska_matrika
-    
-    old_robovi_povp=robovi_povp
-
-    return None
 
 # Funkcija za iskanje pinov v bowlu
 def detect_dark_objects(image):
@@ -594,6 +397,55 @@ def detect_dark_objects(image):
         cv.imshow("Bowl blurred",blurred_og)
     cv.waitKey(0)
     return thresh_og
+
+def zaznaj_roko(base_image, hand_image):
+
+    roi_x = 150
+    roi_y = 50
+    roi_height=400
+    roi_width=200
+
+    base_image= cv.cvtColor(base_image, cv.COLOR_BGR2GRAY)
+    base_image=cv.GaussianBlur(base_image, (5, 5), 0)
+    _,base_image=cv.threshold(base_image,200,255,cv.THRESH_BINARY)
+
+    hand_image= cv.cvtColor(hand_image, cv.COLOR_BGR2GRAY)
+    hand_image=cv.GaussianBlur(hand_image, (5, 5), 0)
+    _,hand_image=cv.threshold(hand_image,200,255,cv.THRESH_BINARY)
+
+    razlika=base_image-hand_image
+    razlika_copy=razlika.copy()
+
+    #izris rezulatov:
+
+    # cv.rectangle(razlika_copy,(roi_x,roi_y),(roi_x+roi_width,roi_y+roi_height),(255),2)
+
+    # cv.imshow("razlika",razlika_copy)
+    # cv.imshow("base",base_image)
+    # cv.imshow("hand",hand_image)
+    # cv.waitKey(0)
+
+    trenutno_stevilo_pikslov_roke_levo=0
+    trenutno_stevilo_pikslov_roke_desno=0
+
+    for h_y in range(roi_y,(roi_y+roi_height)):
+        for h_x in range(roi_x,(roi_x+math.floor(roi_width/2))):
+            if razlika[h_y][h_x]==1:
+                trenutno_stevilo_pikslov_roke_levo+=1
+
+    for h_y in range(roi_y,(roi_y+roi_height)):
+        for h_x in range((roi_x+math.floor(roi_width/2)),(roi_x+roi_width)):
+            if razlika[h_y][h_x]==1:
+                trenutno_stevilo_pikslov_roke_desno+=1
+
+    
+    if trenutno_stevilo_pikslov_roke_levo>trenutno_stevilo_pikslov_roke_desno:
+        return "leva"
+    elif trenutno_stevilo_pikslov_roke_levo<trenutno_stevilo_pikslov_roke_desno:
+        return "desna"
+    else:
+        return ""
+
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
 def visualize_detection(slika, shapes, roi_rect=None):
@@ -821,7 +673,7 @@ def luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
     return centers_spodaj_final,centers_zgoraj_final,
 
 def main_optimized(video1,video2,output_json_path):
-    global last_action, last_action_num, prikazi_vmesne_korake, razporedi_centre_lukenj, premaknjen_board, num_pins_hypo
+    global last_action, last_action_num, prikazi_vmesne_korake, razporedi_centre_lukenj, premaknjen_board, num_pins_hypo, debug_aktivna_roka
     
     #-----------------------------
     radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
@@ -889,6 +741,16 @@ def main_optimized(video1,video2,output_json_path):
     action_start_frame=0                # spremenljivka, ki hrani podatek o začetku anotirane akcije
     action_end_frame=0                  # spremenljivka, ki hrani podatek o koncu anotirane akcije
 
+    # za detekcijo uporabljene roke (leva ali desna)
+    base_img=[]                         # spremenljivka za shranjevanje osnovne slike
+    hand_img=[]                         # slika, na kateri pričakujemo da bo roka že vidna
+    uporabljena_roka=""                 # spremenljivka, ki hrani podatek o roki, ki jo uporabnik uporablja
+    base_img_1=[]                       # spremenljivka za shranjevanje prve slike prve kamere
+    base_img_2=[]                       # spremenljivka za shranjevanje prve slike druge kamere
+
+    # za detekcijo prehitrega zacetka poskusa:
+    base_img_lucke=[]                   # spremenljivka ki hrani sliko iz kamere bližje 3x3 mreži lukenj
+    prehiter_poskus_flag=None           # zastavica za beleženje, če je uporabnik prehitro začel s poskusom
 
     while video!="stop":
     
@@ -897,7 +759,8 @@ def main_optimized(video1,video2,output_json_path):
         #slika_2,dolzina_videja_2 = get_video_frame(ime_videja_2, frame+1)
         slika,dolzina_videja = get_video_frame(video1, frame+1)
         slika_2,dolzina_videja_2 = get_video_frame(video2, frame+1)
-        
+    
+
         if dolzina_videja is not None and dolzina_videja_2 is not None:
             if dolzina_videja>dolzina_videja_2:
                 actual_dolzina_videja=dolzina_videja_2
@@ -930,11 +793,19 @@ def main_optimized(video1,video2,output_json_path):
             image_bgr = cv.cvtColor(slika, cv.COLOR_RGB2BGR)
             image_bgr_2 = cv.cvtColor(slika_2, cv.COLOR_RGB2BGR)
             
+            #za zaznavanje roke:
+            if len(base_img_1)==0:
+                base_img_1=image_bgr.copy()
+        
+            if len(base_img_2)==0:
+                base_img_2=image_bgr_2.copy()
+
             # pred začetkom je potrebno pridobiti podatke (iz obeh kamer)
             # glede središč osvetljenih lukenj
             if setup==0 or setup==2:
                 centers, threshold_img, edge_img = detect_bright_objects(slika)
                 centers_2, threshold_img_2, edge_img_2 = detect_bright_objects(slika_2)
+                
 
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
@@ -944,10 +815,6 @@ def main_optimized(video1,video2,output_json_path):
                 po_thr_2=detect_dark_objects(slika_2)
                 pin_in_bowl_data_flag=False
 
-            #POMEMBNO
-            # preizkusi kaj se zgodi če je roka nad boardom
-            tr_mat=get_transformacijska_matrika(slika)
-            tr_mat_2=get_transformacijska_matrika(slika_2)
 
             if setup==1 or setup==3:
 
@@ -1033,6 +900,17 @@ def main_optimized(video1,video2,output_json_path):
                         centers_zgoraj_temp=centers_2
                         main_thr=po_thr_2
 
+                        # za detekcijo uporabljene roke
+                        base_img=base_img_1
+
+                        # za detekcijo uporabljene roke
+                        if len(base_img_lucke)==0:
+                            base_img_lucke=slika.copy()
+                        
+                        # za detekcijo uporabljene roke
+                        if frame>100 and len(hand_img)==0:
+                            hand_img=slika.copy()
+
                     elif stran_lukenj_2=="spodaj":
                         pin_centers_spodaj=pin_centers_2
                         pin_centers_zgoraj=pin_centers
@@ -1040,6 +918,31 @@ def main_optimized(video1,video2,output_json_path):
                         centers_zgoraj_temp=centers
                         main_thr=po_thr
 
+                        # za detekcijo uporabljene roke
+                        base_img=base_img_2
+
+                        # za detekcijo uporabljene roke
+                        if len(base_img_lucke)==0:
+                            base_img_lucke=slika_2.copy()
+
+                        # za detekcijo uporabljene roke
+                        if frame>100 and len(hand_img)==0:
+                            hand_img=slika_2.copy()
+
+                    # za detekcijo uporabljene roke
+                    if debug_aktivna_roka==1:
+                        if frame>100 and uporabljena_roka=="" and len(base_img)!=0 and len(hand_img)!=0:
+                            uporabljena_roka=zaznaj_roko(base_img,hand_img)
+
+                        if uporabljena_roka!="":
+                            print(f"Aktivna je {uporabljena_roka} roka")
+                            debug_aktivna_roka=0
+
+                    # za detekcijo prehitrega poskusa
+                    if prehiter_poskus_flag==None:
+                        pass
+
+                    # od tu naprej za določanje stanja v 3x3 gridu
                     if razporedi_centre_lukenj==True:
                         #enkrat razporedimo centre lukenj v 3x3 grid
                         centers_spodaj_final,centers_zgoraj_final=luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp)
