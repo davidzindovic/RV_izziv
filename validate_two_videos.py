@@ -143,7 +143,7 @@ def main():
     """
     YOUR CODE START
     """
-    main_optimized.main_optimized(args.video_path,args.video_path_2)
+    main_optimized.main_optimized(args.video_path,args.video_path_2,args.student_output_path)
     """
     YOUR CODE HERE. Tukaj vključite klicanje vaše funkcije, ki obdela video in vrne/shrani json z rezultati.
     """
