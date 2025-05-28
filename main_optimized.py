@@ -22,7 +22,6 @@ import config_izziv_main
 
 #todo: zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
 #       preveri dogajanje v zadnjih framih (NUJNO)
-#      uredi da bias funkcija deluje na podlagi shapes namesto na podlagi centrov lukenj za pine
 
 #----------------iz configa--------------
 debug_prikaz=config_izziv_main.debug_prikaz           
@@ -36,16 +35,17 @@ debug_primerjava_anotacij=config_izziv_main.debug_primerjava_anotacij
 debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
 debug_iskanje_tr_mat=config_izziv_main.debug_iskanje_tr_mat
 debug_bowl=config_izziv_main.debug_bowl
+debug_visualization_text=config_izziv_main.debug_visualization_text
 
-path_do_videjev=config_izziv_main.path_do_videjev
+#path_do_videjev=config_izziv_main.path_do_videjev
 
-ime_videja=config_izziv_main.ime_videja
-ime_videja_2=config_izziv_main.ime_videja_2
+#ime_videja=config_izziv_main.ime_videja
+#ime_videja_2=config_izziv_main.ime_videja_2
 
-pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
+#pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
 
-ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
-ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
+#ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
+#ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
 #----------------------------------------
 
 # seznam možnih stanj (informativno, neuporabljeno)
@@ -602,7 +602,8 @@ def detect_dark_objects(image):
 
     if debug_pins==1:
         cv.imshow("Bowl threshold",thresh_og)
-
+        cv.imshow("Bowl blurred",blurred_og)
+    cv.waitKey(0)
     return thresh_og
 
 # funkcija za pripravo slike za prikaz zaznanih oblik:
@@ -662,117 +663,45 @@ def visualize_detection(slika, shapes, roi_rect=None):
             thickness = 1
             (text_width, text_height), _ = cv.getTextSize(area_text, font, scale, thickness)
             
-            # Draw area box background
-            cv.rectangle(display,
-                        (area_box_x - 5, area_box_y - text_height - 5),
-                        (area_box_x + text_width + 5, area_box_y + 5),
-                        (255, 255, 255), -1)
-            
-            # Draw area box border
-            cv.rectangle(display,
-                        (area_box_x - 5, area_box_y - text_height - 5),
-                        (area_box_x + text_width + 5, area_box_y + 5),
-                        (0, 0, 0), 1)
-            
-            # Draw area text
-            cv.putText(display, area_text,
-                      (area_box_x, area_box_y),
-                      font, scale, (0, 0, 0), thickness)
-            
-            # Original label (shape type and color)
-            label = f"{shape_type}: {shape['color_name']}"
-            (label_width, label_height), _ = cv.getTextSize(label, font, scale, thickness)
-            
-            # Position original label above the contour
-            label_x = shape['center'][0] - label_width // 2
-            label_y = shape['center'][1] - shape['radius'] - 10
-            
-            # Draw label background
-            cv.rectangle(display,
-                        (label_x - 2, label_y - label_height - 2),
-                        (label_x + label_width + 2, label_y + 2),
-                        (255, 255, 255), -1)
-            
-            # Draw label
-            cv.putText(display, label,
-                      (label_x, label_y),
-                      font, scale, (0, 0, 0), thickness)
+            if debug_visualization_text==1:
+                # Draw area box background
+                cv.rectangle(display,
+                            (area_box_x - 5, area_box_y - text_height - 5),
+                            (area_box_x + text_width + 5, area_box_y + 5),
+                            (255, 255, 255), -1)
+                
+                # Draw area box border
+                cv.rectangle(display,
+                            (area_box_x - 5, area_box_y - text_height - 5),
+                            (area_box_x + text_width + 5, area_box_y + 5),
+                            (0, 0, 0), 1)
+                
+                # Draw area text
+                cv.putText(display, area_text,
+                        (area_box_x, area_box_y),
+                        font, scale, (0, 0, 0), thickness)
+                
+                # Original label (shape type and color)
+                label = f"{shape_type}: {shape['color_name']}"
+                (label_width, label_height), _ = cv.getTextSize(label, font, scale, thickness)
+                
+                # Position original label above the contour
+                label_x = shape['center'][0] - label_width // 2
+                label_y = shape['center'][1] - shape['radius'] - 10
+                
+                # Draw label background
+                cv.rectangle(display,
+                            (label_x - 2, label_y - label_height - 2),
+                            (label_x + label_width + 2, label_y + 2),
+                            (255, 255, 255), -1)
+                
+                # Draw label
+                cv.putText(display, label,
+                        (label_x, label_y),
+                        font, scale, (0, 0, 0), thickness)
     
     return display
 
-# funkcija za določanje, če je na spodnji ali zgornji polovici
-# slike 3x3 grid lukenj za pine:
-def detect_object_position_bias(image, shapes, threshold_ratio=0.5, show_result=False):
-    """
-    Funkcija za zaznavanje, na kateri polovici slike (zgornji ali spodnji) je 3x3 mreža
-    lukenj za pine. Po želji lahko zaznane podatke prikažemo. S pomočjo rezultatov te funkcije
-    določimo kasneje, kateri kameri je bližje mreža 3x3 lukenj in kateri posodica s pini
-    
-    Args:
-        image: vhodna slika (ki jo uporabimo za opcijski prikaz)
-        shapes: Zaznane oblike
-        threshold_ratio: Ratio of image height to consider as top/bottom regions (default 1/3)
-        show_result: Whether to display visualization of the regions and counts
-    
-    Returns:
-        str: 'top' if more objects in top region, 'bottom' if more in bottom region, 
-             'equal' if counts are equal, or 'none' if no objects detected
-    """
-    global prikazi_vmesne_korake
-
-    if not shapes or all(len(v) == 0 for v in shapes.values()):
-        return 'none'
-    
-    # Get image dimensions
-    height, width = image.shape[:2]
-    
-    # Calculate threshold positions
-    top_threshold = height * threshold_ratio
-    bottom_threshold = height * (1 - threshold_ratio)
-    
-    # Count objects in top and bottom regions
-    top_count = 0
-    bottom_count = 0
-    
-    for shape_type in shapes:
-        for shape in shapes[shape_type]:
-            y = shape['center'][1]
-            if y < top_threshold:
-                top_count += 1
-            elif y > bottom_threshold:
-                bottom_count += 1
-
-    # Determine result
-    if top_count >= bottom_count:
-        result = 'spodaj'
-    elif bottom_count > top_count:
-        result = 'zgoraj'
-    #else:
-    #    result = 'sredina'
-    
-    # Visualization
-    if show_result and (prikazi_vmesne_korake==1 or debug_prikaz==1):
-        vis = image.copy()
-        
-        # Draw threshold lines
-        cv.line(vis, (0, int(top_threshold)), (width, int(top_threshold)), 
-               (0, 255, 255), 2)  # Yellow for top threshold
-        cv.line(vis, (0, int(bottom_threshold)), (width, int(bottom_threshold)), 
-               (0, 165, 255), 2)  # Orange for bottom threshold
-        
-        # Add text showing counts
-        cv.putText(vis, f"Top: {top_count}", (10, 30), 
-                  cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 255), 2)
-        cv.putText(vis, f"Bottom: {bottom_count}", (10, 70), 
-                  cv.FONT_HERSHEY_SIMPLEX, 1, (0, 165, 255), 2)
-        cv.putText(vis, f"Result: {result}", (width//2 - 100, 30), 
-                  cv.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        
-        cv.imshow("Funkcija: position bias", vis)
-        cv.waitKey(0)
-        cv.destroyAllWindows()
-    
-    return result
 
 # funkcija za vpis anotacije v json datoteko:
 def create_annotation_json(filename, annotations_array):
@@ -902,165 +831,7 @@ def luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
     
     return centers_spodaj_final,centers_zgoraj_final,
 
-def primerjava_anotacij(fresh_json,correct_json):
-    # Opening JSON file
-    file_generiran = open(fresh_json)
-    file_pravilen = open(correct_json)
-
-    # returns JSON object as a dictionary
-    json_generiran = json.load(file_generiran)
-    json_pravilen = json.load(file_pravilen)
-
-    # Iterating through the json list
-    podatki_generirani=json_generiran['annotations']
-    podatki_pravilni=json_pravilen['annotations']
-
-    toleranca_faljenega_framea=20
-    p=0
-    num_true_positive=0
-    num_false_positive=0
-    num_true_negative=0
-    num_false_negative=0
-
-
-    for g in range(len(podatki_generirani)):
-        tp=False
-        fp=False
-        tn=False
-        fn=False
-        #for action in ["frame_start","frame_stop"]:
-        while p<len(podatki_pravilni) and (tp==False and fp==False and tn==False and fn==False):
-            akcija_g=podatki_generirani[g].get("event")
-            akcija_p=podatki_pravilni[p].get("event")
-            if (int(podatki_generirani[g].get("frame_start"))-toleranca_faljenega_framea)<=int(podatki_pravilni[p].get("frame_start")) and (int(podatki_generirani[g].get("frame_stop"))+toleranca_faljenega_framea)>=int(podatki_pravilni[p].get("frame_stop")) and (akcija_g==akcija_p):
-                tp=True
-            #else:
-            #    tn=True
-            p=p+1
-        if tp==False:
-            tn=True
-
-        if tp==True:
-            num_true_positive+=1
-        elif fp==True:
-            num_false_positive+=1
-        elif tn==True:
-            num_true_negative+=1
-        elif fn==True:
-            num_false_negative+=1
-
-        tp=False
-        fp=False
-        tn=False
-        fn=False
-
-    print("Analiza anotacije:")
-    print("                Pravilna anotacija")
-    print("                ------------------")
-    print("               |Positive|Negative")
-    print("Moja     |True |"+str(num_true_positive)+" | "+str(num_true_negative))
-    print("Anotacija|False|"+str(num_false_positive)+" | "+str(num_false_negative))
-    print("----------------------------------")
-
-    num_true_positive=0
-    num_false_positive=0
-    num_true_negative=0
-    num_false_negative=0
-
-    # Closing file
-    file_generiran.close()
-    file_pravilen.close()
-
-def primerjava_change_eventov(fresh_json,correct_json):
-    # Opening JSON file
-    file_generiran = open(fresh_json)
-    file_pravilen = open(correct_json)
-
-    # returns JSON object as a dictionary
-    json_generiran = json.load(file_generiran)
-    json_pravilen = json.load(file_pravilen)
-
-    # Iterating through the json list
-    podatki_generirani=json_generiran['annotations']
-    podatki_pravilni=json_pravilen['annotations']
-
-    toleranca_faljenega_framea=20
-
-    num_true_positive=0
-    num_false_positive=0
-    num_true_negative=0
-    num_false_negative=0
-    
-    
-    # sprememba eventa mora biti enaka (in okviren time_frame)
-    # TP - res se je zgodila sprememba event
-    # TN - ni se zgodila sprememba program pa misli da se je
-    # FP - zgodila se je sprememba, program pa misli da se ni
-    # FN - ni se zgodila sprememba, program prav tako misli da se ni
-
-
-    for f in range(podatki_generirani[-1].get("frame_stop")):   #moramo najti vsak podatek za vsak frame
-
-        event_log_generiran=[0,0,False,"",""] #prejsnji_frame,zdejsnji_frame,a_se_je_zgodila_sprememba,prejsnji_event,zdejsnji event
-        event_log_pravilen=[0,0,False,"",""]
-
-        current_frame=f+1
-
-        event_log_generiran[0]=current_frame-1
-        event_log_generiran[1]=current_frame
-
-        event_log_pravilen[0]=current_frame-1
-        event_log_pravilen[1]=current_frame
-
-        event_found=False
-        event_cnt=0
-        while not event_found and event_cnt<len(podatki_generirani) and event_cnt<len(podatki_pravilni):
-            if (current_frame-1)>=podatki_generirani[event_cnt].get("frame_start") and (current_frame-1)<=podatki_generirani[event_cnt].get("frame_stop") and event_log_generiran[3]=="":
-                event_log_generiran[3]=podatki_generirani[event_cnt].get("event")
-            if (current_frame)>=podatki_generirani[event_cnt].get("frame_start") and (current_frame)<=podatki_generirani[event_cnt].get("frame_stop") and event_log_generiran[4]=="":
-                event_log_generiran[4]=podatki_generirani[event_cnt].get("event")
-            
-            if (current_frame-1)>=podatki_pravilni[event_cnt].get("frame_start") and (current_frame-1)<=podatki_pravilni[event_cnt].get("frame_stop") and event_log_pravilen[3]=="":
-                event_log_pravilen[3]=podatki_pravilni[event_cnt].get("event")
-            if (current_frame)>=podatki_pravilni[event_cnt].get("frame_start") and (current_frame)<=podatki_pravilni[event_cnt].get("frame_stop") and event_log_pravilen[4]=="":
-                event_log_pravilen[4]=podatki_pravilni[event_cnt].get("event")
-
-            event_cnt+=1
-
-            if event_log_generiran[3]!="" and event_log_generiran[4]!="" and event_log_pravilen[3]!="" and event_log_pravilen[4]!="":
-                event_found=True
-
-        #program misli da se je zgodila sprememba in se je v resnici:
-        if event_log_generiran[3]!=event_log_generiran[4] and event_log_pravilen[3]!=event_log_pravilen[4]:#and event_log_generiran[3]==event_log_pravilen[3] and event_log_generiran[4]==event_log_pravilen[4]
-            num_true_positive+=1
-        
-        #program misli da se je zgodila sprememba in se ni v resnici:  
-        elif event_log_generiran[3]!=event_log_generiran[4] and event_log_pravilen[3]==event_log_pravilen[4]:
-            num_true_negative+=1
-
-        #program misli da se ni zgodila sprememba in se je v resnici:  
-        elif event_log_generiran[3]==event_log_generiran[4] and event_log_pravilen[3]!=event_log_pravilen[4]:
-            num_false_positive+=1
-
-        #program misli da se ni zgodila sprememba in se ni v resnici:  
-        elif event_log_generiran[3]==event_log_generiran[4] and event_log_pravilen[3]==event_log_pravilen[4]:
-            num_false_negative+=1
-
-
-    print("Analiza sprememb eventov:")
-    print("")
-    print("                Pravilna anotacija")
-    print("                ------------------")
-    print("               |Positive|Negative")
-    print("Moja     |True |"+str(num_true_positive)+" | "+str(num_true_negative))
-    print("Anotacija|False|"+str(num_false_positive)+" | "+str(num_false_negative))
-    print("----------------------------------")
-
-    # Closing file
-    file_generiran.close()
-    file_pravilen.close()
-            
-def main_optimized(video1,video2):
+def main_optimized(video1,video2,video_path):
     global last_action, last_action_num, prikazi_vmesne_korake, razporedi_centre_lukenj, premaknjen_board, num_pins_hypo
     
     #-----------------------------
@@ -1288,10 +1059,6 @@ def main_optimized(video1,video2):
                         #
                         # sem paše transormacija 3x3 grida lukenj s transf matriko
 
-                        #dx=centers_zgoraj_final[1][0]-centers_zgoraj_final[4][0]
-                        #dy=centers_zgoraj_final[1][1]-centers_zgoraj_final[4][1]
-                        #radij_bowla=1.5*math.sqrt(math.pow(dx,2)+math.pow(dy,2))
-                        #center_bowla_blizje_kameri=[centers_zgoraj_final[1][0]+dx,centers_zgoraj_final[1][1]+3.25*dy]
 
                         premaknjen_board=False
 
@@ -1343,10 +1110,7 @@ def main_optimized(video1,video2):
 
                                 if action=="vstavljanje" and trenutno_stevilo_pinov_v_bowlu>0:
                                     zeljeno_stevilo_bowl_pinov-=1
-                                
-                                #if debug_bowl==1:
-                                #    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
-
+                            
                     if action=="odvzemanje":
                         if stevilo_pinov_v_bowlu>10 and current_state=="ni roka":
                             current_state="roka"
@@ -1355,8 +1119,6 @@ def main_optimized(video1,video2):
                                 if trenutno_stevilo_pinov_v_bowlu<5:
                                     bowl_factor+=1
                                 zeljeno_stevilo_bowl_pinov+=1
-                                #if debug_bowl==1:
-                                #    print("V bowlu je: "+str(trenutno_stevilo_pinov_v_bowlu)+" pinov. Zdaj je frame: "+str(frame)+". Action: "+action)
 
                         if stevilo_pinov_v_bowlu<10 and current_state=="roka":
                             current_state="ni roka"
@@ -1489,12 +1251,9 @@ def main_optimized(video1,video2):
                         if debug_prikaz==1:
                             prikazi_vmesne_korake=1
                         if debug_sprotno_stanje==1:
+                            # izris grida v terminalu 
+                            # (gledano iz kamere, ki ima mrežo bližje sebi)
                             print("-----------------")
-                            #print("frame: "+str(frame))
-                            #print("faza: odvzemanje")
-                            #for c in range(3):
-                            #    print(inserted_pins_zgoraj[c])
-                            #print("~~~~~~~~~~~~~~~")
                             print("Stanje pri frame "+str(frame))
                             for cd in range(3):
                                 print(inserted_pins_spodaj[cd])
@@ -1652,18 +1411,15 @@ def main_optimized(video1,video2):
 
         action_assigned=False
 
-    create_annotation_json(ime_videja, zgodovina)
-    print("JSON file "+ime_videja+" created successfully!")
-    create_annotation_json(ime_videja_2, zgodovina)
-    print("JSON file "+ime_videja_2+" created successfully!")
+    #create_annotation_json(ime_videja, zgodovina)
+    #print("JSON file "+ime_videja+" created successfully!")
+    #create_annotation_json(ime_videja_2, zgodovina)
+    #print("JSON file "+ime_videja_2+" created successfully!")
 
-    if debug_confusion_matrix==1:
-        primerjava_change_eventov(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
-        primerjava_change_eventov(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
+    video_path=video_path[0:-5]#odreže .json
+    create_annotation_json(video_path, zgodovina)
+    print("JSON file "+video_path+" created successfully!")
 
-    if debug_primerjava_anotacij==1:
-        primerjava_anotacij(path_do_videjev+ime_videja+".json",pravilna_anotacija_path+ime_pravilna_anotacija+".json")
-        primerjava_anotacij(path_do_videjev+ime_videja_2+".json",pravilna_anotacija_path+ime_pravilna_anotacija_2+".json")
 
 if __name__ == "__main__":
     main_optimized()
