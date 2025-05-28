@@ -1,7 +1,6 @@
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
-from collections import defaultdict
 import math
 import json
 import config_izziv_main
@@ -36,16 +35,6 @@ debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
 debug_iskanje_tr_mat=config_izziv_main.debug_iskanje_tr_mat
 debug_bowl=config_izziv_main.debug_bowl
 debug_visualization_text=config_izziv_main.debug_visualization_text
-
-#path_do_videjev=config_izziv_main.path_do_videjev
-
-#ime_videja=config_izziv_main.ime_videja
-#ime_videja_2=config_izziv_main.ime_videja_2
-
-#pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
-
-#ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
-#ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
 #----------------------------------------
 
 # seznam možnih stanj (informativno, neuporabljeno)
@@ -139,7 +128,7 @@ def get_video_frame(video_path, frame_number):
     cap.set(cv.CAP_PROP_POS_FRAMES, frame_number)
     ret, frame = cap.read()
     cap.release()
-    
+
     if ret:
         image=cv.cvtColor(frame, cv.COLOR_BGR2RGB)
         return image,total_frames
@@ -831,7 +820,7 @@ def luknje_v_3x3_gridu_POV(centers_spodaj_temp,centers_zgoraj_temp):
     
     return centers_spodaj_final,centers_zgoraj_final,
 
-def main_optimized(video1,video2,video_path):
+def main_optimized(video1,video2,output_json_path):
     global last_action, last_action_num, prikazi_vmesne_korake, razporedi_centre_lukenj, premaknjen_board, num_pins_hypo
     
     #-----------------------------
@@ -914,6 +903,7 @@ def main_optimized(video1,video2,video_path):
                 actual_dolzina_videja=dolzina_videja_2
             elif dolzina_videja<=dolzina_videja_2:
                 actual_dolzina_videja=dolzina_videja
+            #print(f"1: {dolzina_videja}, 2: {dolzina_videja_2}")
 
         if debug_prikazi_vsak_frame==1:
             cv.imshow(slika)
@@ -1269,7 +1259,7 @@ def main_optimized(video1,video2,video_path):
                                 action_end_frame=action_start_frame
 
                             if pin_count==0 and trenutno_stevilo_pinov_v_bowlu==9:#ce ni pinov vec v 3x3 gridu
-                                action_end_frame=actual_dolzina_videja
+                                action_end_frame=actual_dolzina_videja-1
 
                             zgodovina.append(["prazna_roka",action_start_frame,action_end_frame])
                             last_action_num=4
@@ -1384,7 +1374,7 @@ def main_optimized(video1,video2,video_path):
                     
                     if action=="odvzemanje" and len(zgodovina)!=0 and trenutno_stevilo_pinov_v_bowlu==9 and last_action_num==3:
                         action="konec"
-                        zgodovina.append(["prazna_roka",action_end_frame+1,actual_dolzina_videja])
+                        zgodovina.append(["prazna_roka",action_end_frame+1,actual_dolzina_videja-1])
 
                         action_assigned=True  
                     
@@ -1416,9 +1406,9 @@ def main_optimized(video1,video2,video_path):
     #create_annotation_json(ime_videja_2, zgodovina)
     #print("JSON file "+ime_videja_2+" created successfully!")
 
-    video_path=video_path[0:-5]#odreže .json
-    create_annotation_json(video_path, zgodovina)
-    print("JSON file "+video_path+" created successfully!")
+    output_json_path=output_json_path[0:-5]#odreže .json
+    create_annotation_json(output_json_path, zgodovina)
+    print("JSON file "+output_json_path+" created successfully!")
 
 
 if __name__ == "__main__":
