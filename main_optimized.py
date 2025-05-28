@@ -418,7 +418,7 @@ def zaznaj_roko(base_image, hand_image):
 
     #izris rezulatov:
 
-    # cv.rectangle(razlika_copy,(roi_x,roi_y),(roi_x+roi_width,roi_y+roi_height),(255),2)
+#   cv.rectangle(razlika_copy,(roi_x,roi_y),(roi_x+roi_width,roi_y+roi_height),(255),2)
 
     # cv.imshow("razlika",razlika_copy)
     # cv.imshow("base",base_image)
