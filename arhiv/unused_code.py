@@ -1,3 +1,201 @@
+def zaznaj_roko(base_image, hand_image):
+    
+
+def get_transformacijska_matrika(image):
+    """
+    Pod transformacijsko matriko na podlagi spremembe pozicije ali orientacije glavne plošče
+    
+    Args:
+        image: slika, na kateri želimo iskati oblike
+        region_of_interest: območje na sliki, znotraj katerega želimo iskati oblike
+        canny_low: spodnja meja za Canny algoritem za detekcijo robov
+        canny_high: zgornja meja za Canny algoritem za detekcijo robov
+
+        pins_centers,shapes, (x, y, w, h)
+    Returns:
+        pins_centers: Središča najdenih objektov (pinov v 3x3 mreži lukenj)
+        shapes: Podrobne informacije (parametri kot so aspect ratio ipd.) najdene oblike
+        (x, y, w, h): touple, ki hrani podatke območja, znotraj katerega smo iskali (x in y začetne točke, w=širina,h=višina)
+    """
+
+    slika_rob=image.copy()
+    #roi = (150, 50, 200, 400)
+    x0=150
+    y0=50
+    width=200
+    height=400
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+    _,thr=cv.threshold(gray,200,255,cv.THRESH_BINARY)
+    new_thr = thr[y0:y0+height, x0:x0+width].copy()
+    canny= cv.Canny(new_thr, 80, 160, apertureSize=3)
+
+
+    contours,_=cv.findContours(canny, cv.RETR_TREE, cv.CHAIN_APPROX_NONE)
+
+    najmanjsa_povrsina=0
+    n_p_index=0
+    n_p_cnt=0
+    for c in contours:
+        #contours[n_p_cnt]=c + np.array([x0, y0])
+        area=cv.contourArea(c)
+        if area>najmanjsa_povrsina:
+            najmanjsa_povrsina=area
+            n_p_index=n_p_cnt
+        n_p_cnt+=1
+    
+    rotrect = cv.minAreaRect(contours[n_p_index]+ np.array([x0, y0]))
+    
+    box = cv.boxPoints(rotrect)
+    box = np.intp(box)
+    
+    sredisce_boarda=rotrect[0]
+    kot_rotacije=rotrect[2]
+
+    if debug_iskanje_tr_mat==1:
+        print ("Boarda ima središče v: "+str(sredisce_boarda)+", zarotiran je pa za: "+str(kot_rotacije))
+
+    # get center line from box
+    # note points are clockwise from bottom right
+    x1 = (box[0][0] + box[1][0]) // 2
+    y1 = (box[0][1] + box[1][1]) // 2
+    x2 = (box[2][0] + box[3][0]) // 2
+    y2 = (box[2][1] + box[3][1]) // 2
+
+    if debug_iskanje_tr_mat==1:
+        # draw rotated rectangle on copy of img as result
+        cv.drawContours(slika_rob, [box], 0, (0,0,255), 2)
+        cv.line(slika_rob, (x1,y1), (x2,y2), (255,0,0), 2)
+
+        cv.imshow("Sivinska v funk robov",gray)
+        #cv.imshow("Upragovljanje v funk robov",new_thr)
+        cv.imshow("Canny v funk robov",canny)
+        cv.imshow("Najden board v funk robov",slika_rob)
+
+        cv.waitKey(0)
+
+    return sredisce_boarda,kot_rotacije
+
+# Funkcija za iskanje transformacijske matrike potrebne zaradi
+# premika main boarda (za preslikavo točk 3x3 grida)
+def sprememba_robov(image):#transf matrika overkil? sort?
+    global debug_robovi_kvadra
+    global num_za_povp_robov, robovi, robovi_povp, old_robovi_povp
+
+    repack_old_robovi_povp=[]
+    repack_robovi_povp=[]
+    transformacijska_matrika=[]
+
+    gray = cv.cvtColor(image, cv.COLOR_BGR2GRAY)
+
+
+    blurred = cv.GaussianBlur(gray, (7, 7), 2)
+    edges = cv.Canny(blurred, 80, 160, apertureSize=3)
+    lines = cv.HoughLinesP(edges, rho=1, theta=np.pi/180, threshold=80, minLineLength=50, maxLineGap=60)
+
+    # Visualize raw lines (for debugging)
+    line_img = np.zeros_like(image)
+
+    local_list=[]
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        if x1>150 and x2<350 and y1>50 and y2<350:
+            cv.line(line_img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            local_list.append([x1,y1,x2,y2])
+
+            """
+            if abs(x1-x2)<50 and abs(y1-y2)>100:
+                vert.append((x1,y1,x2,y2))
+                print("V angle: "+str(math.degrees(math.atan(abs((x2-x1)/(y2-y1))))))
+                cv.line(line_kvad, (x1, y1), (x2, y2), (0, 0, 255), 2)
+            if 200>abs(x1-x2)>100 and abs(y1-y2)<20:
+                hor.append((x1,y1,x2,y2))
+                print("H angle: "+str(math.degrees(math.atan(abs((y2-y1)/(x2-x1))))))
+                cv.line(line_kvad, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            """
+
+
+    robovi.append(local_list)
+
+    if debug_robovi_kvadra==1:
+        cv.imshow("Raw Hough Lines", line_img)  # Debug window
+        cv.waitKey(0)
+    num_za_povp_robov+=1
+    move_radius=5
+    max_frames_za_povp=3
+
+    if num_za_povp_robov==max_frames_za_povp:
+        num_za_povp_robov=0
+        robovi_povp=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
+        for st_zajema in range(len(robovi)):
+            for r in range((len(robovi[st_zajema]))):
+                for r_l in range(len(robovi[st_zajema][r])):
+                    for r_primerjava in range(len(robovi[st_zajema])):
+                        if r_primerjava!=r:
+                            for r_x in range(len(robovi[st_zajema][r_primerjava])):
+                                if (r_l==0 or r_l==2) and (r_x==0 or r_x==2) and r<len(robovi_povp):
+                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
+                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
+
+                                if (r_l==1 or r_l==3) and (r_x==1 or r_x==3) and r<len(robovi_povp):
+                                    if (robovi[st_zajema][r][r_l]+move_radius)>robovi[st_zajema][r_primerjava][r_x]>(robovi[st_zajema][r][r_l]-move_radius):
+                                        robovi_povp[r][r_l]+=robovi[st_zajema][r_primerjava][r_x]
+
+        for a in range(len(robovi_povp)):
+            for b in range(len(robovi_povp[a])):
+                robovi_povp[a][b]/=max_frames_za_povp
+        
+        cifra=0
+        old_vsota=0
+        for vsota_1 in range(len(old_robovi_povp)):
+            for vsota_2 in range(len(old_robovi_povp[vsota_1])):
+                old_vsota+=old_robovi_povp[vsota_1][vsota_2]
+                cifra+=1
+        old_vsota=old_vsota/cifra
+
+        cifra=0
+        vsota=0
+        for vsota_1 in range(len(robovi_povp)):
+            for vsota_2 in range(len(robovi_povp[vsota_1])):
+                vsota+=robovi_povp[vsota_1][vsota_2]
+                cifra+=1
+        vsota=vsota/cifra
+
+        if len(old_robovi_povp)>0 and old_vsota>0:
+            for re in range(len(old_robovi_povp)):
+                for re_index in range(int(len(old_robovi_povp[re])/2)):
+                    repack_old_robovi_povp.append([old_robovi_povp[re][2*re_index],old_robovi_povp[re][2*re_index+1]])
+            repack_old_robovi_povp=repack_old_robovi_povp[0:3]
+            repack_old_robovi_povp=np.array(repack_old_robovi_povp)
+            repack_old_robovi_povp=np.float32(repack_old_robovi_povp)
+
+        if len(robovi_povp)>0:
+            for re in range(len(robovi_povp)):
+                for re_index in range(int(len(robovi_povp[re])/2)):
+                    repack_robovi_povp.append([robovi_povp[re][2*re_index],robovi_povp[re][2*re_index+1]])
+            repack_robovi_povp=repack_robovi_povp[0:3]#točno 3 točke!
+            repack_robovi_povp=np.array(repack_robovi_povp)
+            repack_robovi_povp=np.float32(repack_robovi_povp)
+
+        #print("stevilo elementov: "+str(len(robovi_povp))+" | "+str(len(old_robovi_povp)))
+        #print("podatkovni tip:" +str(type(repack_old_robovi_povp))+" | "+str(type(repack_robovi_povp)))
+        if len(robovi_povp)==len(old_robovi_povp) and len(old_robovi_povp)>0 and old_vsota>0 and vsota>0:
+            transformacijska_matrika=cv.getAffineTransform(repack_old_robovi_povp,repack_robovi_povp)
+
+        old_robovi_povp=robovi_povp
+        robovi=[] 
+        if debug_robovi_kvadra==1:
+            print("Transformacijska matrika: ")
+            print(transformacijska_matrika)
+            print("Tocke robov prej:")
+            print(repack_old_robovi_povp)
+            print("tocke robov zdej:")
+            print(repack_robovi_povp)
+            print("----------------------")      
+        return transformacijska_matrika
+    
+    old_robovi_povp=robovi_povp
+
+    return None
 
 def create_offset_grid_from_lines(image, parallel_line_groups, side, show_result=True):
     """
