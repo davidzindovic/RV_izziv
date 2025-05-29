@@ -398,6 +398,48 @@ def detect_dark_objects(image):
     cv.waitKey(0)
     return thresh_og
 
+def zaznaj_prehiter_zacetek(image_with_lights,hand_image):
+
+    roi_x = 150
+    roi_y = 50
+    roi_height=400
+    roi_width=200
+
+    image_with_lights= cv.cvtColor(image_with_lights, cv.COLOR_BGR2GRAY)
+    image_with_lights=cv.GaussianBlur(image_with_lights, (5, 5), 0)
+    _,image_with_lights=cv.threshold(image_with_lights,200,255,cv.THRESH_BINARY)
+
+    hand_image= cv.cvtColor(hand_image, cv.COLOR_BGR2GRAY)
+    hand_image=cv.GaussianBlur(hand_image, (5, 5), 0)
+    _,hand_image=cv.threshold(hand_image,200,255,cv.THRESH_BINARY)
+
+    razlika=image_with_lights-hand_image
+    razlika_copy=razlika.copy()
+
+    #izris rezulatov:
+
+    #cv.rectangle(razlika_copy,(roi_x,roi_y),(roi_x+roi_width,roi_y+roi_height),(255),2)
+
+    # cv.imshow("razlika",razlika_copy)
+    # cv.imshow("image_with_lights",image_with_lights)
+    # cv.imshow("hand",hand_image)
+    # cv.waitKey(0)
+
+    # ce je manj kot 1000 pikslov razlike očitno ni razlike med slikama in je roka bila
+    # prisotna pred začetkom poskusa
+    odlocilno_stevilo_pikslov=1000
+    trenutno_stevilo_pikslov_roke=0
+
+    for h_y in range(roi_y,(roi_y+roi_height)):
+        for h_x in range(roi_x,(roi_x+roi_width)):
+            if razlika[h_y][h_x]==1:
+                trenutno_stevilo_pikslov_roke+=1
+    
+    if trenutno_stevilo_pikslov_roke>odlocilno_stevilo_pikslov:
+        return True
+    else:
+        return False
+
 def zaznaj_roko(base_image, hand_image):
 
     roi_x = 150
@@ -736,7 +778,7 @@ def main_optimized(video1,video2,output_json_path):
 
     # spremenljivka, ki hrani podatek o dolžini v videja (število frame-ov)
     actual_dolzina_videja=0
-
+    
     action_assigned=False               # zastavica, ki zabeleži da je v anotacijo že bila zapisana akcija v tej iteraciji
     action_start_frame=0                # spremenljivka, ki hrani podatek o začetku anotirane akcije
     action_end_frame=0                  # spremenljivka, ki hrani podatek o koncu anotirane akcije
@@ -751,6 +793,8 @@ def main_optimized(video1,video2,output_json_path):
     # za detekcijo prehitrega zacetka poskusa:
     base_img_lucke=[]                   # spremenljivka ki hrani sliko iz kamere bližje 3x3 mreži lukenj
     prehiter_poskus_flag=None           # zastavica za beleženje, če je uporabnik prehitro začel s poskusom
+    base_img_lucke_1=[]                 # spremenljivka za shranjevanje prve slike prve kamere
+    base_img_lucke_2=[]                 # spremenljivka za shranjevanje druge slike druge kamere
 
     while video!="stop":
     
@@ -809,6 +853,8 @@ def main_optimized(video1,video2,output_json_path):
 
                 if len(centers)>=9 and len(centers_2)>=9: # pocaka da ima 9 ref tock na vsakem videju (ne vemo še katera je spodnja stran)
                     setup=1
+                    base_img_lucke_1=slika.copy()
+                    base_img_lucke_2=slika_2.copy()
 
             if pin_in_bowl_data_flag==True:
                 po_thr=detect_dark_objects(slika)
@@ -900,6 +946,9 @@ def main_optimized(video1,video2,output_json_path):
                         centers_zgoraj_temp=centers_2
                         main_thr=po_thr_2
 
+                        # za detekcijo prehitrega poskusa
+                        base_img_lucke=base_img_lucke_1.copy()
+
                         # za detekcijo uporabljene roke
                         base_img=base_img_1
 
@@ -907,7 +956,7 @@ def main_optimized(video1,video2,output_json_path):
                         if len(base_img_lucke)==0:
                             base_img_lucke=slika.copy()
                         
-                        # za detekcijo uporabljene roke
+                        # za detekcijo uporabljene roke in prehitrega poskusa
                         if frame>100 and len(hand_img)==0:
                             hand_img=slika.copy()
 
@@ -918,6 +967,9 @@ def main_optimized(video1,video2,output_json_path):
                         centers_zgoraj_temp=centers
                         main_thr=po_thr
 
+                        # za detekcijo prehitrega poskusa
+                        base_img_lucke=base_img_lucke_2.copy()
+                      
                         # za detekcijo uporabljene roke
                         base_img=base_img_2
 
@@ -925,7 +977,7 @@ def main_optimized(video1,video2,output_json_path):
                         if len(base_img_lucke)==0:
                             base_img_lucke=slika_2.copy()
 
-                        # za detekcijo uporabljene roke
+                        # za detekcijo uporabljene roke in prehitrega poskusa
                         if frame>100 and len(hand_img)==0:
                             hand_img=slika_2.copy()
 
@@ -934,13 +986,19 @@ def main_optimized(video1,video2,output_json_path):
                         if frame>100 and uporabljena_roka=="" and len(base_img)!=0 and len(hand_img)!=0:
                             uporabljena_roka=zaznaj_roko(base_img,hand_img)
 
-                        if uporabljena_roka!="":
+                        if uporabljena_roka!="" :
                             print(f"Aktivna je {uporabljena_roka} roka")
                             debug_aktivna_roka=0
 
                     # za detekcijo prehitrega poskusa
-                    if prehiter_poskus_flag==None:
-                        pass
+                    if debug_prehiter_poskus==1:
+                        if prehiter_poskus_flag==None and frame>100 and len(base_img_lucke)!=0 and len(hand_img)!=0:
+                            prehiter_poskus_flag=zaznaj_prehiter_zacetek(base_img_lucke,hand_img)
+
+                        if prehiter_poskus_flag==True:
+                            print("Uporabnik je poskus PREHITRO začel!")
+                        elif prehiter_poskus_flag==False:
+                            print("Uporabnik je poskus začel pravočasno!)
 
                     # od tu naprej za določanje stanja v 3x3 gridu
                     if razporedi_centre_lukenj==True:
@@ -951,7 +1009,6 @@ def main_optimized(video1,video2,output_json_path):
                     if premaknjen_board==True:
                         #
                         # sem paše transormacija 3x3 grida lukenj s transf matriko
-
 
                         premaknjen_board=False
 
