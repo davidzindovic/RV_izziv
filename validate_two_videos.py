@@ -9,10 +9,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-import config_izziv_main
-import main_optimized
-import cv2 as cv
-
 def load_json(file_path: str) -> Dict:
     """Load JSON file and return its contents."""
     try:
@@ -141,15 +137,19 @@ def main():
     ground_truth = convert_to_frame_events(ground_truth_data["annotations"])
     
     """
-    YOUR CODE START
+    zacetek moje kode
     """
+    import main_optimized
+
     main_optimized.main_optimized(args.video_path,args.video_path_2,args.student_output_path)
+
+    # pretvorim originalno JSON obliko v novo zahtevano
+    student_output = load_json(args.student_output_path)
     """
-    YOUR CODE HERE. Tukaj vključite klicanje vaše funkcije, ki obdela video in vrne/shrani json z rezultati.
+    konec moje kode
     """
 
     # Load student output
-    student_output = load_json(args.student_output_path)
     student_output = convert_to_frame_events(student_output["annotations"])
     
     # Get unique events for confusion matrix
@@ -181,10 +181,10 @@ if __name__ == "__main__":
 # NAVODILA ZA UPORABO:
 # Skripto za validacijo kličeš iz terminala na sledeč način:
 #
-#   python validate_single_video.py <pot_do_videa> <pot_do_ground_truth_json> <pot_do_student_output_json>
+#   python validate_two_videos.py <pot_do_videa_1> <pot_do_videa_2> <pot_do_ground_truth_json> <pot_do_student_output_json>
 #
 # Primer:
-#   python validate_single_video.py 64210054_video_15.mp4 64210054_video_15.json 64210054_video_15_predictions.json
+#   python validate_two_videos.py 64210054_video_15.mp4 64210054_video_19.mp4 64210054_video_15.json 64210054_video_15_predictions.json
 #
 # Skripta bo izpisala metrike in shranila confusion matrix kot PNG sliko.
 # ------------------------------------------------------------
