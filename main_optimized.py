@@ -44,24 +44,7 @@ last_action_num=1
 # trenutni .json file:
 zgodovina=[]
 
-# robovi main boarda (za povprecenje robov vsakih 5 frameov):
-robovi=[]
-robovi_povp=[[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]]
-old_robovi_povp=[]
-num_za_povp_robov=0
-
-# tabela za false positive (SW-real):
-false_positive_tabela=[[0,0], #T-P,F-P     T=True,F=False
-                       [0,0]] #F-N,T-N     P=Positive,N=Negative
-
-# spremenljivke za false_positive_tabelo:
-num_true_positive=0
-num_false_positive=0
-num_false_negative=0
-num_true_negative=0
-
 # spremenljivke za število pinov:
-num_pins_verified=0
 num_pins_hypo=0
 
 # spremenljivka za število pinov v bowlu na podlagi števila postavljeni pinov:
@@ -82,9 +65,6 @@ premaknjen_board=False
 
 # spremenljivka, ki hrani podatek o središču bowla
 center_bowla_blizje_kameri=[]
-
-slika_height=0
-slika_2_height=0
 
 
 def get_video_frame(video_path, frame_number):
@@ -782,7 +762,7 @@ def main_optimized(video1,video2,output_json_path):
     centers=[]                          # spremenljivka, ki hrani informacijo o točkah središč osvetljenih lukenj za zatiče iz prvega videa
     centers_2=[]                        # spremenljivka, ki hrani informacijo o točkah središč osvetljenih lukenj za zatiče iz drugega videa
 
-    printing=True
+    printing=True                       # zastavica, ki skrbi da bo sporočilo za vse pobrane pine le enkrat izpisano
 
     while video!="stop":
     
