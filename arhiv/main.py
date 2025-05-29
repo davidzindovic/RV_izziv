@@ -32,28 +32,40 @@ import config_izziv_main
 #      zrihtaj spremembe robov in transf matriko (Ni NUJNO), zrihtaj barve (ni nujno)
 
 #----------------iz configa--------------
-debug = config_izziv_main.debug
+
 debug_prikaz=config_izziv_main.debug_prikaz           
 debug_outlines=config_izziv_main.debug_outlines            
 debug_pins=config_izziv_main.debug_pins
 debug_sprotno_stanje=config_izziv_main.debug_sprotno_stanje
 debug_video=config_izziv_main.debug_video
 debug_prikazi_vsak_frame=config_izziv_main.debug_prikazi_vsak_frame
-debug_akcije=config_izziv_main.debug_akcije
-debug_false_positive=config_izziv_main.debug_false_positive
-debug_anotacija=config_izziv_main.debug_anotacija
-debug_robovi_kvadra=config_izziv_main.debug_robovi_kvadra
 debug_bowl=config_izziv_main.debug_bowl
 
-path_do_videjev=config_izziv_main.path_do_videjev
+# path_do_videjev=config_izziv_main.path_do_videjev
 
-ime_videja=config_izziv_main.ime_videja
-ime_videja_2=config_izziv_main.ime_videja_2
+# ime_videja=config_izziv_main.ime_videja
+# ime_videja_2=config_izziv_main.ime_videja_2
 
-pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
+# pravilna_anotacija_path=config_izziv_main.pravilna_anotacija_path
 
-ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
-ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
+# ime_pravilna_anotacija=config_izziv_main.ime_pravilna_anotacija
+# ime_pravilna_anotacija_2=config_izziv_main.ime_pravilna_anotacija_2
+
+
+#vsak \ je potrebno podvojiti v \\
+path_do_videjev='C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\'                          
+
+#ime videja (brez končnic)
+ime_videja="64210323_video_1"
+ime_videja_2="64210323_video_5"
+
+#vsak \ je potrebno podvojiti v \\
+#pravilna_anotacija_path='C:\\Users\\David Zindović\\Desktop\\Fax-Mag\\RV\\izziv\\izziv main\\rocna_anotacija\\'
+
+#ime videja (brez končnic)
+ime_pravilna_anotacija="64210323_video_7"
+ime_pravilna_anotacija_2="64210323_video_3"
+
 #----------------------------------------
 
 # seznam možnih stanj (informativno, neuporabljeno)
@@ -495,6 +507,7 @@ def sprememba_robov(image):#transf matrika overkil? sort?
 
 # Funkcija za iskanje pinov v bowlu
 def detect_dark_objects(image):
+    global debug_bowl
     # Read the image
     img = image.copy()
     slikaa=image.copy()
@@ -541,15 +554,15 @@ def detect_dark_objects(image):
     #blurred=cv.medianBlur(enhanced,3)
 
     # Apply adaptive thresholding for better edge detection
-    #thresh = cv.adaptiveThreshold(blurred, 255,
-    #                             cv.ADAPTIVE_THRESH_GAUSSIAN_C,
-    #                             cv.THRESH_BINARY_INV, 11, 2)
+    thresh = cv.adaptiveThreshold(blurred, 255,
+                                 cv.ADAPTIVE_THRESH_GAUSSIAN_C,
+                                 cv.THRESH_BINARY_INV, 11, 2)
 
     #laplace:
     #s=cv.Laplacian(blurred,cv.CV_64F)
     #cv.imshow("sobel",s)
 
-    _,thresh=cv.threshold(enhanced,254,255,cv.THRESH_BINARY)
+    #_,thresh=cv.threshold(enhanced,254,255,cv.THRESH_BINARY)
     _,thresh_og=cv.threshold(blurred_og,254,255,cv.THRESH_BINARY)
     #thresh=cv.bitwise_not(thresh)
     #cv.imshow("t1",thresh)
@@ -567,10 +580,10 @@ def detect_dark_objects(image):
     """
     
     edges = cv.Canny(blurred, 40, 100)
-    #combined_edges = cv.bitwise_or(thresh, edges)
+    combined_edges = cv.bitwise_or(thresh, edges)
     #combined_edges=cv.bitwise_not(combined_edges)
     #combined_edges=edges
-    combined_edges=thresh
+    #combined_edges=thresh
 
     #kernel = cv.getStructuringElement(cv.MORPH_CROSS,(5,5))
     #dilated = cv.dilate(combined_edges, kernel)
@@ -593,8 +606,11 @@ def detect_dark_objects(image):
     """
 
     centri_pravilne_konture=[]
+
+    debug_bowl=1
     if debug_bowl==1:
-        cv.imshow("Edges",thresh_og)
+        cv.imshow("Edges",thresh)
+        cv.imshow("Gray",gray)
         cv.imshow("Blurred",blurred)
     # Process each contour
     object_counter = 0
@@ -676,11 +692,11 @@ def detect_dark_objects(image):
             if debug_pins==1 or prikazi_vmesne_korake==1 or debug_outlines==1 or debug_prikazi_vsak_frame==1 or debug_bowl==1:
                 # Draw the contour on the image (green)
                 cv.drawContours(obj_display, [translated_contour], -1, (0, 255, 0), 1)
-
+    debug_bowl=1
     if debug_bowl==1:   
         #cv.drawContours(slikaa, translated_contour, -1, (0,0,255), 1)
         cv.imshow("v bowlu",obj_display)
-
+        cv.waitKey(0)
     if debug_pins==1:
         cv.waitKey(0)
         cv.destroyAllWindows()
@@ -1111,6 +1127,7 @@ def primerjava_change_eventov(fresh_json,correct_json):
     file_pravilen.close()
             
 if __name__ == "__main__":
+    debug=0
 
     radij_tocnosti=20 # radij znotraj katerega je lahko sredisce najdenega pina, pri čemer je središče radija središče zaznane osvetljene luknje
 
