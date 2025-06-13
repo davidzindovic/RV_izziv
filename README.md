@@ -1,3 +1,6 @@
+## 0. Opis
+Projekt na temo robotskega vida in obdelave slikovnih informacij. Uporabljena so bila le osnovna orodja brez strojnega učenja.
+
 ## 1. Potrebne knjižnice:
 * numpy
 * opencv
